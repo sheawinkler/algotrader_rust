@@ -1,0 +1,54 @@
+# AlgoTraderV2 Configuration
+# Copy this file to config.toml and adjust the values as needed
+
+[app]
+log_level = "info"  # debug, info, warn, error
+data_dir = "./data"  # Directory to store data files
+backtest = false  # Set to true to run in backtest mode
+
+[trading]
+default_pair = "SOL/USDC"  # Default trading pair
+default_position_size = 0.1  # Position size as a fraction of available balance (0.1 = 10%)
+default_slippage_bps = 50  # Slippage tolerance in basis points (50 = 0.5%)
+max_open_positions = 5  # Maximum number of open positions
+
+# DEX configurations
+[dex.jupiter]
+enabled = true  # Enable/disable Jupiter DEX
+params = {}
+
+[dex.raydium]
+enabled = true  # Enable/disable Raydium DEX
+params = {}
+
+[dex.photon]
+enabled = true  # Enable/disable Photon DEX
+params = {}
+
+# Strategy configurations
+[strategies.mean_reversion]
+enabled = true  # Enable/disable mean reversion strategy
+params = { 
+    lookback = "20",  # Lookback period for mean calculation
+    entry_z_score = "2.0",  # Z-score threshold for entry
+    exit_z_score = "0.5",  # Z-score threshold for exit
+    position_size = "0.1"  # Position size for this strategy (fraction of portfolio)
+}
+
+[strategies.momentum]
+enabled = true  # Enable/disable momentum strategy
+params = {
+    ema_short = "9",  # Short EMA period
+    ema_long = "21",  # Long EMA period
+    rsi_period = "14",  # RSI period
+    rsi_overbought = "70.0",  # RSI overbought threshold
+    rsi_oversold = "30.0",  # RSI oversold threshold
+    position_size = "0.1"  # Position size for this strategy (fraction of portfolio)
+}
+
+# API keys and sensitive information (store in .env file instead)
+# [api_keys]
+# solana = "your_solana_rpc_url_here"
+# jupiter = "your_jupiter_api_key_here"
+# raydium = "your_raydium_api_key_here"
+# photon = "your_photon_api_key_here"

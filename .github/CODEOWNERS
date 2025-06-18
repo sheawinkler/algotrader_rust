@@ -1,0 +1,46 @@
+# This is a CODEOWNERS file for the AlgoTraderV2 Rust project.
+# It defines individuals or teams that are responsible for code in the repository.
+# https://help.github.com/articles/about-code-owners/
+
+# Default owners for everything in the repo
+*       @yourusername
+
+# Core engine components
+/src/lib.rs                     @yourusername
+/src/engine/                    @yourusername
+
+# DEX integrations
+/src/dex/                       @yourusername
+
+# Trading strategies
+/src/strategy/                  @yourusername
+
+# Utilities
+/src/utils/                     @yourusername
+
+# Configuration files
+Cargo.toml                      @yourusername
+Cargo.lock                     @yourusername
+rust-toolchain.toml            @yourusername
+
+# Documentation
+README.md                       @yourusername
+CONTRIBUTING.md                 @yourusername
+DEVELOPMENT.md                  @yourusername
+ROADMAP.md                      @yourusername
+
+# CI/CD
+.github/workflows/              @yourusername
+
+# Security
+SECURITY.md                     @yourusername
+CODE_OF_CONDUCT.md              @yourusername
+
+# Tests
+tests/                         @yourusername
+benches/                       @yourusername
+
+# Examples
+examples/                     @yourusername
+
+# Note: Replace @yourusername with the actual GitHub usernames of the code owners.
