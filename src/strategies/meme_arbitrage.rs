@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide};
+use crate::trading::{MarketData, Signal, SignalType, OrderType, Position, Order, OrderSide};
 use super::{TradingStrategy, TimeFrame};
 
 /// Meme Token Arbitrage Strategy that identifies price discrepancies across DEXs
@@ -253,6 +253,8 @@ impl TradingStrategy for MemeArbitrageStrategy {
                     spread_pct,
                 },
                 price: buy_price,
+                 order_type: OrderType::Market,
+                 limit_price: None,
                 timestamp: market_data.timestamp,
                 confidence: (spread_pct / 10.0).min(0.95), // Scale confidence with spread
                 metadata: Some(serde_json::json!({

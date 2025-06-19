@@ -67,6 +67,11 @@ pub struct Signal {
         pub timestamp: i64,
     /// Confidence score 0-1.
     pub confidence: f64,
+    /// Order type (Market, Limit, etc.)
+    pub order_type: OrderType,
+    /// Optional limit price for limit orders
+    pub limit_price: Option<f64>,
+    pub stop_price: Option<f64>,
     /// Additional arbitrary metadata useful for debugging/analytics.
     pub metadata: Option<serde_json::Value>,
 }

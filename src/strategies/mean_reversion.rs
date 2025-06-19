@@ -7,7 +7,7 @@ use ta::{
 };
 use tracing::debug;
 
-use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide};
+use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
 use crate::utils::indicator_ext::IndicatorValue;
 use super::{TradingStrategy, TimeFrame};
 
@@ -150,6 +150,8 @@ impl TradingStrategy for MeanReversionStrategy {
                     signal_type: SignalType::Sell,
                     size: self.position_size,
                     price: market_data.close,
+                    order_type: OrderType::Market,
+                    limit_price: None,
                     timestamp: market_data.timestamp,
                     confidence: 0.8,
                     metadata: Some(serde_json::json!({
@@ -170,6 +172,8 @@ impl TradingStrategy for MeanReversionStrategy {
                     signal_type: SignalType::Buy,
                     size: self.position_size,
                     price: market_data.close,
+                    order_type: OrderType::Market,
+                    limit_price: None,
                     timestamp: market_data.timestamp,
                     confidence: 0.7,
                     metadata: Some(serde_json::json!({
@@ -188,6 +192,8 @@ impl TradingStrategy for MeanReversionStrategy {
                     signal_type: SignalType::Sell,
                     size: self.position_size,
                     price: market_data.close,
+                    order_type: OrderType::Market,
+                    limit_price: None,
                     timestamp: market_data.timestamp,
                     confidence: 0.7,
                     metadata: Some(serde_json::json!({

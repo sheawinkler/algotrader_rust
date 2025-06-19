@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderBook};
+use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderBook, OrderType};
 use super::{TradingStrategy, TimeFrame};
 
 /// Order Flow Strategy that analyzes market depth and order flow
@@ -195,6 +195,8 @@ impl TradingStrategy for OrderFlowStrategy {
                 },
                 size: 1.0,
                 price,
+                order_type: OrderType::Market,
+                limit_price: None,
                 timestamp: market_data.timestamp,
                 confidence: 0.8,
                 metadata: Some(serde_json::json!({
@@ -222,6 +224,8 @@ impl TradingStrategy for OrderFlowStrategy {
                     signal_type,
                     size: 1.0,
                     price: market_data.close,
+                     order_type: OrderType::Market,
+                     limit_price: None,
                     timestamp: market_data.timestamp,
                     confidence: 0.7,
                     metadata: Some(serde_json::json!({

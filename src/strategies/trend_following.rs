@@ -11,7 +11,7 @@ use ta::{
 use crate::indicators::AverageDirectionalIndex;
 use tracing::debug;
 
-use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide};
+use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
 use crate::utils::indicator_ext::IndicatorValue;
 use super::{TradingStrategy, TimeFrame};
 
@@ -206,6 +206,8 @@ impl TradingStrategy for TrendFollowingStrategy {
                 signal_type: SignalType::Sell,
                 size: 1.0,
                 price: market_data.close,
+                 order_type: OrderType::Market,
+                 limit_price: None,
                 timestamp: market_data.timestamp,
                 confidence: 0.8,
                 metadata: Some(serde_json::json!({
@@ -228,6 +230,8 @@ impl TradingStrategy for TrendFollowingStrategy {
                             signal_type: SignalType::Buy,
                             size: 1.0,
                             price: market_data.close,
+                 order_type: OrderType::Market,
+                 limit_price: None,
                             timestamp: market_data.timestamp,
                             confidence: 0.7,
                             metadata: Some(serde_json::json!({
@@ -251,6 +255,8 @@ impl TradingStrategy for TrendFollowingStrategy {
                             signal_type: SignalType::Sell,
                     size: 1.0,
                             price: market_data.close,
+                 order_type: OrderType::Market,
+                 limit_price: None,
                             timestamp: market_data.timestamp,
                             confidence: 0.7,
                             metadata: Some(serde_json::json!({
@@ -372,10 +378,12 @@ mod tests {
                 
                 // Simulate order fill
                 strategy.on_order_filled(&Order {
-                    symbol: "SOL/USDC".to_string(),
+                    id: "TEST".to_string(),
+                     symbol: "SOL/USDC".to_string(),
                     side: OrderSide::Buy,
                     size: 1.0,
                     price: close,
+                     order_type: OrderType::Market,
                     order_type: OrderType::Market,
                     timestamp: SystemTime::now(),
                 });

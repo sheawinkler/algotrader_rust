@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use ta::indicators::{ExponentialMovingAverage, RelativeStrengthIndex};
 use ta::Next;
 
-use crate::trading::{MarketData, Signal, SignalType};
+use crate::trading::{MarketData, Signal, SignalType, OrderSide, OrderType};
 use crate::utils::types::TradingPair;
 
 use crate::utils::types::{Position, Order};
@@ -95,6 +95,8 @@ impl TradingStrategy for MomentumStrategy {
                 signal_type: SignalType::Buy,
                 price: current_price,
                 size: self.position_size,
+                order_type: OrderType::Market,
+                limit_price: None,
                 confidence: 0.8,
                 timestamp: market_data.timestamp,
                 metadata: None,
@@ -107,6 +109,8 @@ impl TradingStrategy for MomentumStrategy {
                 signal_type: SignalType::Sell,
                 price: current_price,
                 size: self.position_size,
+                order_type: OrderType::Market,
+                limit_price: None,
                 confidence: 0.8,
                 timestamp: market_data.timestamp,
                 metadata: None,

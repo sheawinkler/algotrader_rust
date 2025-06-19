@@ -120,8 +120,53 @@ impl super::DexClient for JupiterClient {
         is_buy: bool,
         slippage_bps: u16,
         max_fee_lamports: u64,
+        order_type: crate::utils::types::OrderType,
+        limit_price: Option<f64>,
+        _stop_price: Option<f64>,
+        _take_profit_price: Option<f64>,
         signer: &str,
     ) -> Result<String> {
+        // Handle different order types
+        match order_type {
+            crate::utils::types::OrderType::Market => {
+                // proceed
+            },
+            crate::utils::types::OrderType::Limit => {
+                let current_price = self.get_price(base_token, quote_token).await?;
+                if let Some(lp) = limit_price {
+                    let condition = if is_buy { current_price <= lp } else { current_price >= lp };
+                    if !condition {
+                        return Err(crate::Error::DexError("Limit price not satisfied".into()));
+                    }
+                } else {
+                    return Err(crate::Error::InvalidArgument("limit_price required for Limit order".into()));
+                }
+            },
+            crate::utils::types::OrderType::Stop | crate::utils::types::OrderType::StopLimit => {
+                if let Some(sp) = _stop_price {
+                    let current_price = self.get_price(base_token, quote_token).await?;
+                    let triggered = if is_buy { current_price >= sp } else { current_price <= sp };
+                    if !triggered {
+                        return Err(crate::Error::DexError("Stop price not triggered".into()));
+                    }
+                    // For StopLimit treat as Limit if limit_price supplied, else Market
+                    if order_type == crate::utils::types::OrderType::StopLimit {
+                        if let Some(lp) = limit_price {
+                            let cond = if is_buy { current_price <= lp } else { current_price >= lp };
+                            if !cond {
+                                return Err(crate::Error::DexError("Limit condition after stop not satisfied".into()));
+                            }
+                        }
+                    }
+                } else {
+                    return Err(crate::Error::InvalidArgument("stop_price required for Stop order".into()));
+                }
+            }
+            _ => {
+                return Err(crate::Error::DexError("Unsupported order type for Jupiter".into()));
+            }
+        }
+
         // Convert amount to lamports (assuming 6 decimals for most tokens)
         let amount_lamports = (amount * 1_000_000.0) as u64;
         

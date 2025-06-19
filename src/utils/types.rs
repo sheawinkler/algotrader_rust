@@ -35,6 +35,12 @@ impl TradingPair {
     }
 }
 
+impl Default for TradingPair {
+    fn default() -> Self {
+        Self::new("", "")
+    }
+}
+
 impl std::fmt::Display for TradingPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.base, self.quote)
@@ -50,6 +56,7 @@ pub struct Order {
     pub price: f64,
     pub size: f64,
     pub side: OrderSide,
+    pub order_type: OrderType,
     pub timestamp: i64,
 }
 
@@ -70,7 +77,20 @@ pub enum OrderType {
 }
 
 /// Status of an order
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+/// Represents a pending order waiting for stop/limit trigger
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingOrder {
+    pub pair: TradingPair,
+    pub amount: f64,
+    pub is_buy: bool,
+    pub order_type: OrderType,
+    pub limit_price: Option<f64>,
+    pub stop_price: Option<f64>,
+    pub wallet: String,
+    pub dex_preference: Vec<String>,
+    pub timestamp: i64,
+}
+
 pub enum OrderStatus {
     New,
     PartiallyFilled,
@@ -197,6 +217,8 @@ pub struct Signal {
     pub action: SignalAction,
     pub price: f64,
     pub size: f64,
+    pub order_type: OrderType,
+    pub limit_price: Option<f64>,
     pub stop_loss: Option<f64>,
     pub take_profit: Option<f64>,
     pub timestamp: i64,

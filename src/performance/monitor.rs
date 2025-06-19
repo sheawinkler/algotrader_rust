@@ -596,6 +596,7 @@ mod tests {
         );
         
         let order = Order {
+            id: "TEST-ORDER".to_string(),
             symbol: "SOL/USDC".to_string(),
             side: OrderSide::Buy,
             size: 1.0,

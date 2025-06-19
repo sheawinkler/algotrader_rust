@@ -29,6 +29,10 @@ pub trait DexClient: Send + Sync {
         is_buy: bool,
         slippage_bps: u16,
         max_fee_lamports: u64,
+        order_type: crate::utils::types::OrderType,
+        limit_price: Option<f64>,
+        stop_price: Option<f64>,
+        take_profit_price: Option<f64>,
         signer: &str,
     ) -> crate::Result<String>; // Returns transaction hash
     

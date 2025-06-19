@@ -13,7 +13,7 @@ use ta::{
 use crate::indicators::StochasticOscillator;
 use tracing::debug;
 
-use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide};
+use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
 use crate::utils::types::MarketRegime;
 use crate::utils::indicator_ext::IndicatorValue;
 use super::{TradingStrategy, TimeFrame};
@@ -179,6 +179,8 @@ impl TradingStrategy for AdvancedStrategy {
                         signal_type: SignalType::Buy,
                         size: 1.0,
                         price: market_data.close,
+                         order_type: OrderType::Market,
+                         limit_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.7,
                         metadata: Some(serde_json::json!({
@@ -200,6 +202,8 @@ impl TradingStrategy for AdvancedStrategy {
                         signal_type: SignalType::Sell,
                         size: 1.0,
                         price: market_data.close,
+                         order_type: OrderType::Market,
+                         limit_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.7,
                         metadata: Some(serde_json::json!({
@@ -221,6 +225,8 @@ impl TradingStrategy for AdvancedStrategy {
                         signal_type: SignalType::Buy,
                         size: 1.0,
                         price: market_data.close,
+                         order_type: OrderType::Market,
+                         limit_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.6,
                         metadata: Some(serde_json::json!({
@@ -237,6 +243,8 @@ impl TradingStrategy for AdvancedStrategy {
                         signal_type: SignalType::Sell,
                         size: 1.0,
                         price: market_data.close,
+                         order_type: OrderType::Market,
+                         limit_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.6,
                         metadata: Some(serde_json::json!({
@@ -257,6 +265,8 @@ impl TradingStrategy for AdvancedStrategy {
                         signal_type: SignalType::Buy,
                         size: 1.0,
                         price: market_data.close,
+                         order_type: OrderType::Market,
+                         limit_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.5,
                         metadata: Some(serde_json::json!({
@@ -273,6 +283,8 @@ impl TradingStrategy for AdvancedStrategy {
                         signal_type: SignalType::Sell,
                         size: 1.0,
                         price: market_data.close,
+                         order_type: OrderType::Market,
+                         limit_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.5,
                         metadata: Some(serde_json::json!({
@@ -314,7 +326,7 @@ impl TradingStrategy for AdvancedStrategy {
                     size: order.size,
                     entry_price: Some(order.price),
                     current_price: order.price,
-                    timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
+                                        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
                     stop_loss: Some(order.price * 0.99), // 1% stop loss
                     take_profit: Some(order.price * 1.02), // 2% take profit
                     side: order.side.clone(),

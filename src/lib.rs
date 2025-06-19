@@ -19,18 +19,24 @@ pub mod trading;
 pub mod engine;
 pub mod backtest;
 
+pub mod market_data;
+
 
 
 use crate::engine::market_router::MarketRouter;
 use std::collections::HashMap;
 use crate::dex::DexFactory;
 use crate::strategies::TradingStrategy;
+use crate::utils::types::PendingOrder;
 use crate::performance::PerformanceMonitor;
 use crate::utils::types::{MarketData, TradingPair, Signal, SignalAction, Order, OrderSide};
 use crate::trading::{Signal as StratSignal, SignalType};
 use tokio::sync::mpsc;
 use solana_sdk::signature::Keypair;
 use crate::analysis::wallet_analyzer::WalletAnalyzer;
+use crate::market_data::ws::{self as market_ws, PriceCache};
+use tokio::task::JoinHandle;
+use std::sync::Arc;
 
 
 
@@ -103,6 +109,13 @@ pub struct TradingEngine {
     pub open_trades: usize, // tracked live
     pub trade_history: Vec<TradeRecord>, // for analytics
     pub open_positions: std::collections::HashMap<String, (f64, f64)>,
+    // --- MARKET DATA CACHE ---
+    pub price_cache: PriceCache,
+    price_feed_handle: Option<JoinHandle<()>>,
+    // Pending stop/stop-limit orders
+    pending_orders: Arc<tokio::sync::Mutex<Vec<crate::utils::types::PendingOrder>>>,
+    scheduler_handle: Option<JoinHandle<()>>,
+    retry_tx: tokio::sync::mpsc::UnboundedSender<crate::utils::types::PendingOrder>,
     
     // Arbitrage stub
     pub paper_trading: bool,
@@ -139,6 +152,48 @@ impl TradingEngine {
             }
         }
         // Build performance monitors map
+        // Initialize price cache and WebSocket feed
+        let price_cache: PriceCache = Arc::new(tokio::sync::RwLock::new(HashMap::new()));
+        let default_pair = TradingPair::from_str(&config.trading.default_pair).unwrap_or_else(|| TradingPair::new("SOL", "USDC"));
+        let price_feed_handle = market_ws::spawn_price_feed(&[default_pair.clone()], price_cache.clone());
+        let pending_orders: Arc<tokio::sync::Mutex<Vec<crate::utils::types::PendingOrder>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let (retry_tx, mut retry_rx_unused) = tokio::sync::mpsc::unbounded_channel();
+        let _ = &mut retry_rx_unused;
+        // spawn scheduler
+        let tx_clone = retry_tx.clone();
+        let scheduler_handle = {
+            let tx = tx_clone;
+            let cache_clone = price_cache.clone();
+            let orders_clone = pending_orders.clone();
+            tokio::spawn(async move {
+                use tokio::time::{sleep, Duration};
+                loop {
+                    sleep(Duration::from_secs(5)).await;
+                    let mut orders = orders_clone.lock().await;
+                    if orders.is_empty() { continue; }
+                    let mut i = 0;
+                    while i < orders.len() {
+                        let o = &orders[i];
+                        if let Some(price) = { let guard = cache_clone.read().await; guard.get(&o.pair).cloned() } {
+                            let triggered = match o.order_type {
+                                crate::utils::types::OrderType::Stop | crate::utils::types::OrderType::StopLimit => {
+                                    if let Some(sp) = o.stop_price { if o.is_buy { price >= sp } else { price <= sp } } else { false }
+                                }
+                                _ => false
+                            };
+                            if triggered {
+                                // Currently we just remove it; engine will need explicit retry logic
+                                let triggered_order = orders.remove(i);
+                                let _ = tx.send(triggered_order);
+                                continue;
+                            }
+                        }
+                        i += 1;
+                    }
+                }
+            })
+        };
+
         let mut perf_map = std::collections::HashMap::new();
         for strat in &strategies_vec {
             perf_map.insert(strat.name().to_string(), PerformanceMonitor::new());
@@ -164,6 +219,11 @@ impl TradingEngine {
             open_trades: 0,
             trade_history: Vec::new(),
             open_positions: std::collections::HashMap::new(),
+            price_cache,
+            price_feed_handle: Some(price_feed_handle),
+             pending_orders,
+             scheduler_handle: Some(scheduler_handle),
+             retry_tx,
             slippage_bps,
             max_fee_lamports,
             split_threshold_sol,
@@ -174,6 +234,12 @@ impl TradingEngine {
             paper_trading,
             enable_arbitrage: false,
         }
+    }
+
+        /// Get latest cached mid-price for a pair, if available.
+    pub async fn get_live_price(&self, pair: &TradingPair) -> Option<f64> {
+        let guard = self.price_cache.read().await;
+        guard.get(pair).cloned()
     }
 
     /// Rotate to next wallet in the configured pool. Returns Some(wallet) or None if pool empty.
@@ -425,14 +491,13 @@ impl TradingEngine {
         // Event loop: process market events until router terminates
         tokio::select! {
             res = async {
-                
-
                 while let Some(evt) = rx.recv().await {
                     if let Some(data) = TradingEngine::convert_market_event(&evt) {
                         let mut collected_signals: Vec<Signal> = Vec::new();
                         for strat in self.strategies.iter_mut() {
                             let sigs = strat.generate_signals(&data).await;
                             for s in sigs {
+
                                 if let Some(engine_sig) = TradingEngine::convert_strategy_signal(&s, strat.name()) {
                                     collected_signals.push(engine_sig);
                                 }
@@ -477,6 +542,8 @@ impl TradingEngine {
             },
             price: sig.price,
             size: sig.size,
+            order_type: sig.order_type,
+            limit_price: sig.limit_price,
             stop_loss: None,
             take_profit: None,
             timestamp: sig.timestamp,
@@ -530,7 +597,11 @@ impl TradingEngine {
                                 matches!(sig.action, crate::utils::types::SignalAction::Buy),
                                 self.slippage_bps,
                                 self.max_fee_lamports,
-                                &wallet,
+                                sig.order_type,
+                                 sig.limit_price,
+                                 None,
+                                 None,
+                                 &wallet,
                             ).await {
                             Ok(_tx) => {
                                 log::info!("Executed trade via {}: {:?}", dex_name, sig);
@@ -546,6 +617,28 @@ impl TradingEngine {
                     }
                 }
                 if !executed {
+                    if let Some(err) = &last_err {
+                        if sig.order_type == crate::utils::types::OrderType::Stop || sig.order_type == crate::utils::types::OrderType::StopLimit {
+                            if err.to_string().contains("Stop price not triggered") {
+                                let po = PendingOrder {
+                                    pair: sig.pair.clone(),
+                                    amount: chunk,
+                                    is_buy: matches!(sig.action, crate::utils::types::SignalAction::Buy),
+                                    order_type: sig.order_type,
+                                    limit_price: sig.limit_price,
+                                    stop_price: None,
+                                    wallet: wallet.clone(),
+                                    dex_preference: preferred.iter().map(|s| s.to_string()).collect(),
+                                    timestamp: sig.timestamp,
+                                };
+                                {
+                                    let mut guard = self.pending_orders.lock().await;
+                                    guard.push(po.clone());
+                                }
+                                log::info!("Queued pending stop order: {:?}", po);
+                            }
+                        }
+                    }
                     log::error!("All DEX clients failed to execute trade for {:?}", sig);
                     if let Some(strat) = self.strategies.iter_mut().find(|s| s.name() == sig.strategy_id) {
                         let failed_order = Order {
@@ -554,6 +647,7 @@ impl TradingEngine {
                             price: sig.price,
                             size: chunk,
                             side: if sig.action == SignalAction::Buy { OrderSide::Buy } else { OrderSide::Sell },
+                            order_type: crate::utils::types::OrderType::Market,
                             timestamp: sig.timestamp,
                         };
                         let err_anyhow: anyhow::Error = last_err.unwrap_or_else(|| anyhow::anyhow!("Unknown DEX error"));
@@ -573,6 +667,7 @@ impl TradingEngine {
                     price: sig.price,
                     size: chunk,
                     side: if sig.action == SignalAction::Buy { OrderSide::Buy } else { OrderSide::Sell },
+                    order_type: crate::utils::types::OrderType::Market,
                     timestamp: sig.timestamp,
                 };
                 // Performance monitor
@@ -647,6 +742,7 @@ impl TradingEngine {
                 price: sig.price,
                 size: chunk,
                 side: if sig.action == SignalAction::Buy { OrderSide::Buy } else { OrderSide::Sell },
+                order_type: crate::utils::types::OrderType::Market,
                 timestamp: sig.timestamp,
             };
             // Call performance monitor if exists

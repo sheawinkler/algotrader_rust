@@ -75,22 +75,60 @@ impl super::DexClient for RaydiumClient {
     
     async fn execute_trade(
         &self,
-        _base_token: &str,
-        _quote_token: &str,
-        _amount: f64,
-        _is_buy: bool,
-        _slippage_bps: u16,
-        _max_fee_lamports: u64,
-        _signer: &str,
+        base_token: &str,
+        quote_token: &str,
+        amount: f64,
+        is_buy: bool,
+        slippage_bps: u16,
+        max_fee_lamports: u64,
+        order_type: crate::utils::types::OrderType,
+        limit_price: Option<f64>,
+        _stop_price: Option<f64>,
+        _take_profit_price: Option<f64>,
+        signer: &str,
     ) -> Result<String> {
-        // TODO: Implement actual trade execution
-        // 1. Get pool address
-        // 2. Create swap instruction
-        // 3. Build transaction
-        // 4. Send it to the network
-        // 5. Return the transaction signature
-        
-        // For now, return a placeholder
+        // Handle order types
+        match order_type {
+            crate::utils::types::OrderType::Market => {
+                // proceed
+            },
+            crate::utils::types::OrderType::Limit => {
+                let current_price = self.get_price(base_token, quote_token).await?;
+                if let Some(lp) = limit_price {
+                    let condition = if is_buy { current_price <= lp } else { current_price >= lp };
+                    if !condition {
+                        return Err(crate::Error::DexError("Limit price not satisfied".into()));
+                    }
+                } else {
+                    return Err(crate::Error::InvalidArgument("limit_price required for Limit order".into()));
+                }
+            },
+            crate::utils::types::OrderType::Stop | crate::utils::types::OrderType::StopLimit => {
+                if let Some(sp) = _stop_price {
+                    let current_price = self.get_price(base_token, quote_token).await?;
+                    let triggered = if is_buy { current_price >= sp } else { current_price <= sp };
+                    if !triggered {
+                        return Err(crate::Error::DexError("Stop price not triggered".into()));
+                    }
+                    if order_type == crate::utils::types::OrderType::StopLimit {
+                        if let Some(lp) = limit_price {
+                            let cond = if is_buy { current_price <= lp } else { current_price >= lp };
+                            if !cond {
+                                return Err(crate::Error::DexError("Limit condition after stop not satisfied".into()));
+                            }
+                        }
+                    }
+                } else {
+                    return Err(crate::Error::InvalidArgument("stop_price required for Stop order".into()));
+                }
+            }
+            _ => {
+                return Err(crate::Error::DexError("Unsupported order type for Raydium".into()));
+            }
+        }
+
+        // TODO: Implement actual trade execution logic here. Placeholder for now.
+        let _ = (amount, is_buy, slippage_bps, max_fee_lamports, signer); // suppress unused warnings
         Ok("tx_signature_placeholder".to_string())
     }
     
