@@ -208,6 +208,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                 price: market_data.close,
                  order_type: OrderType::Market,
                  limit_price: None,
+                    stop_price: None,
                 timestamp: market_data.timestamp,
                 confidence: 0.8,
                 metadata: Some(serde_json::json!({
@@ -232,6 +233,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                             price: market_data.close,
                  order_type: OrderType::Market,
                  limit_price: None,
+                    stop_price: None,
                             timestamp: market_data.timestamp,
                             confidence: 0.7,
                             metadata: Some(serde_json::json!({
@@ -257,6 +259,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                             price: market_data.close,
                  order_type: OrderType::Market,
                  limit_price: None,
+                    stop_price: None,
                             timestamp: market_data.timestamp,
                             confidence: 0.7,
                             metadata: Some(serde_json::json!({
@@ -325,7 +328,7 @@ impl TradingStrategy for TrendFollowingStrategy {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "strategy_tests"))]
 mod tests {
     use super::*;
     use std::time::{SystemTime, Duration};

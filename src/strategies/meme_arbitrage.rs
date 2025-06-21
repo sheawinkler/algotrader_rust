@@ -255,6 +255,7 @@ impl TradingStrategy for MemeArbitrageStrategy {
                 price: buy_price,
                  order_type: OrderType::Market,
                  limit_price: None,
+                 stop_price: None,
                 timestamp: market_data.timestamp,
                 confidence: (spread_pct / 10.0).min(0.95), // Scale confidence with spread
                 metadata: Some(serde_json::json!({

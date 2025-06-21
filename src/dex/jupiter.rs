@@ -162,9 +162,7 @@ impl super::DexClient for JupiterClient {
                     return Err(crate::Error::InvalidArgument("stop_price required for Stop order".into()));
                 }
             }
-            _ => {
-                return Err(crate::Error::DexError("Unsupported order type for Jupiter".into()));
-            }
+
         }
 
         // Convert amount to lamports (assuming 6 decimals for most tokens)

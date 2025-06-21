@@ -1,7 +1,7 @@
 //! Logging configuration for the trading system.
 
 use env_logger::{Builder, Env, Target};
-use log::info;
+use log::{LevelFilter, info};
 use std::io::Write;
 use chrono::Local;
 

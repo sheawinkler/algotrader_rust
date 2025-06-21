@@ -60,6 +60,20 @@ pub struct Order {
     pub timestamp: i64,
 }
 
+impl Default for Order {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            symbol: String::new(),
+            price: 0.0,
+            size: 0.0,
+            side: OrderSide::Buy,
+            order_type: OrderType::Market,
+            timestamp: 0,
+        }
+    }
+}
+
 /// Side of an order (buy or sell)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OrderSide {
@@ -199,6 +213,27 @@ pub struct MarketData {
     pub dex_prices: Option<HashMap<String, f64>>,
 }
 
+impl Default for MarketData {
+    fn default() -> Self {
+        Self {
+            pair: TradingPair::new("", ""),
+            symbol: String::new(),
+            candles: Vec::new(),
+            last_price: 0.0,
+            volume_24h: 0.0,
+            change_24h: 0.0,
+            volume: None,
+            timestamp: 0,
+            open: None,
+            high: None,
+            low: None,
+            close: 0.0,
+            order_book: None,
+            dex_prices: None,
+        }
+    }
+}
+
 /// Market regime for analytics and strategy adaptation
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum MarketRegime {
@@ -219,6 +254,7 @@ pub struct Signal {
     pub size: f64,
     pub order_type: OrderType,
     pub limit_price: Option<f64>,
+    pub stop_price: Option<f64>,
     pub stop_loss: Option<f64>,
     pub take_profit: Option<f64>,
     pub timestamp: i64,
@@ -304,7 +340,10 @@ mod tests {
             action: SignalAction::Buy,
             price: 100.0,
             size: 1.0,
-            stop_loss: Some(95.0),
+            order_type: OrderType::Market,
+            limit_price: None,
+            stop_price: None,
+        stop_loss: Some(95.0),
             take_profit: Some(110.0),
             timestamp: 1_234_567_890,
             metadata: metadata.clone(),

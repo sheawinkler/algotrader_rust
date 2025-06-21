@@ -1,5 +1,6 @@
 use solana_sdk::pubkey::Pubkey;
 use spl_token::state::Account as TokenAccount;
+use solana_sdk::program_pack::Pack;
 use std::str::FromStr;
 use anyhow::{Result, anyhow};
 use spl_associated_token_account::get_associated_token_address;
@@ -68,8 +69,8 @@ impl TokenUtils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spl_token::state::Mint;
-    use solana_sdk::account_info::Account;
+    
+    
     
     #[test]
     fn test_format_token_amount() {
@@ -95,12 +96,12 @@ mod tests {
     
     #[test]
     fn test_get_token_balance() {
-        let mut data = vec![0; 165];
+        let mut data = vec![0u8; 165];
         let mut account = TokenAccount::unpack_unchecked(&data).unwrap();
         account.amount = 1_500_000_000; // 1.5 SOL (9 decimals)
-        account.decimals = 9;
+        // decimals stored separately, pass as param below
         
-        assert_eq!(TokenUtils::get_token_balance(&account), 1.5);
-        assert_eq!(TokenUtils::get_token_balance_ui(&account), "1.500000000");
+        assert_eq!(TokenUtils::get_token_balance(&account, 9), 1.5);
+        assert_eq!(TokenUtils::get_token_balance_ui(&account, 9), "1.500000000");
     }
 }

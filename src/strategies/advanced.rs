@@ -181,6 +181,7 @@ impl TradingStrategy for AdvancedStrategy {
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
+                         stop_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.7,
                         metadata: Some(serde_json::json!({
@@ -204,6 +205,7 @@ impl TradingStrategy for AdvancedStrategy {
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
+                         stop_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.7,
                         metadata: Some(serde_json::json!({
@@ -227,6 +229,7 @@ impl TradingStrategy for AdvancedStrategy {
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
+                         stop_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.6,
                         metadata: Some(serde_json::json!({
@@ -245,6 +248,7 @@ impl TradingStrategy for AdvancedStrategy {
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
+                         stop_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.6,
                         metadata: Some(serde_json::json!({
@@ -267,6 +271,7 @@ impl TradingStrategy for AdvancedStrategy {
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
+                         stop_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.5,
                         metadata: Some(serde_json::json!({
@@ -285,6 +290,7 @@ impl TradingStrategy for AdvancedStrategy {
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
+                         stop_price: None,
                         timestamp: market_data.timestamp,
                         confidence: 0.5,
                         metadata: Some(serde_json::json!({
@@ -353,19 +359,22 @@ impl TradingStrategy for AdvancedStrategy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::trading::MarketData;
+    use crate::trading::{MarketData, TradingPair};
+    use chrono::Utc;
     use std::time::{SystemTime, Duration};
     
     fn create_test_market_data(price: f64, volume: f64) -> MarketData {
-        MarketData {
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64,
-            open: price * 0.99,
-            high: price * 1.01,
-            low: price * 0.99,
-            close: price,
-            volume,
-            symbol: "TEST".to_string(),
-        }
+        let mut md = MarketData::default();
+        md.pair = TradingPair::new("TEST", "USD");
+        md.symbol = "TEST/USD".to_string();
+        md.timestamp = Utc::now().timestamp();
+        md.open = Some(price * 0.99);
+        md.high = Some(price * 1.01);
+        md.low = Some(price * 0.99);
+        md.close = price;
+        md.last_price = price;
+        md.volume = Some(volume);
+        md
     }
     
     #[tokio::test]

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AlgoTraderV2 Dashboard</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;margin:2rem;background:#f5f5f5;color:#333}
+    h1{margin-top:0}
+    .card{background:#fff;padding:1rem;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);margin-bottom:1rem;width:300px}
+    .grid{display:flex;flex-wrap:wrap;gap:1rem}
+  </style>
+</head>
+<body>
+  <h1>AlgoTraderV2 Dashboard</h1>
+  <div class="grid">
+    <div class="card">
+      <h3>Portfolio</h3>
+      <p id="equity_usd">USD Equity: loading…</p>
+      <p id="equity_sol">SOL Equity: loading…</p>
+    </div>
+    <div class="card">
+      <h3>Metrics</h3>
+      <p id="pnl">PnL (USD): loading…</p>
+      <p id="open_positions">Open Positions: loading…</p>
+    </div>
+  </div>
+<script>
+async function fetchJSON(url){
+  const r = await fetch(url);
+  return r.ok ? r.json() : null;
+}
+async function refresh(){
+  const p = await fetchJSON('/api/portfolio');
+  if(p){
+    document.getElementById('equity_usd').textContent = `USD Equity: ${p.equity_usd.toFixed(2)}`;
+    document.getElementById('equity_sol').textContent = `SOL Equity: ${p.equity_sol.toFixed(4)}`;
+  }
+  const m = await fetchJSON('/api/metrics');
+  if(m){
+    document.getElementById('pnl').textContent = `PnL (USD): ${m.pnl_usd.toFixed(2)}`;
+    document.getElementById('open_positions').textContent = `Open Positions: ${m.open_positions}`;
+  }
+}
+setInterval(refresh, 3000);
+refresh();
+</script>
+</body>
+</html>

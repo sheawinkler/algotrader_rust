@@ -185,7 +185,7 @@ mod tests {
         fn timeframe(&self) -> TimeFrame { TimeFrame::OneHour }
         fn symbols(&self) -> Vec<String> { vec!["TEST/USD".to_string()] }
         async fn generate_signals(&mut self, _: &MarketData) -> Vec<Signal> { vec![] }
-        fn on_order_filled(&self, _: &Order) {}
+        fn on_order_filled(&mut self, _: &Order) {}
         fn get_positions(&self) -> Vec<&Position> { vec![] }
     }
     
@@ -204,12 +204,7 @@ mod tests {
     
     #[tokio::test]
     async fn test_performance_aware_strategy() {
-        let monitor = PerformanceMonitor::new(
-            Duration::from_secs(300), // 5 minutes
-            3,     // max consecutive losses
-            10.0,  // max drawdown %
-            40.0,  // min win rate %
-        );
+        let monitor = PerformanceMonitor::new();
         
         let analyzer = StrategyAnalyzer::new(
             10,    // min trades

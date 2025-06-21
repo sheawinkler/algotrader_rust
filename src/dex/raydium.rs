@@ -122,9 +122,6 @@ impl super::DexClient for RaydiumClient {
                     return Err(crate::Error::InvalidArgument("stop_price required for Stop order".into()));
                 }
             }
-            _ => {
-                return Err(crate::Error::DexError("Unsupported order type for Raydium".into()));
-            }
         }
 
         // TODO: Implement actual trade execution logic here. Placeholder for now.
@@ -142,6 +139,7 @@ impl super::DexClient for RaydiumClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dex::DexClient;
     
     #[test]
     fn test_raydium_client_initialization() {

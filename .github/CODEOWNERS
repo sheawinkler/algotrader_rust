@@ -3,44 +3,44 @@
 # https://help.github.com/articles/about-code-owners/
 
 # Default owners for everything in the repo
-*       @yourusername
+*       @sheawinkler
 
 # Core engine components
-/src/lib.rs                     @yourusername
-/src/engine/                    @yourusername
+/src/lib.rs                     @sheawinkler
+/src/engine/                    @sheawinkler
 
 # DEX integrations
-/src/dex/                       @yourusername
+/src/dex/                       @sheawinkler
 
 # Trading strategies
-/src/strategy/                  @yourusername
+/src/strategy/                  @sheawinkler
 
 # Utilities
-/src/utils/                     @yourusername
+/src/utils/                     @sheawinkler
 
 # Configuration files
-Cargo.toml                      @yourusername
-Cargo.lock                     @yourusername
-rust-toolchain.toml            @yourusername
+Cargo.toml                      @sheawinkler
+Cargo.lock                     @sheawinkler
+rust-toolchain.toml            @sheawinkler
 
 # Documentation
-README.md                       @yourusername
-CONTRIBUTING.md                 @yourusername
-DEVELOPMENT.md                  @yourusername
-ROADMAP.md                      @yourusername
+README.md                       @sheawinkler
+CONTRIBUTING.md                 @sheawinkler
+DEVELOPMENT.md                  @sheawinkler
+ROADMAP.md                      @sheawinkler
 
 # CI/CD
-.github/workflows/              @yourusername
+.github/workflows/              @sheawinkler
 
 # Security
-SECURITY.md                     @yourusername
-CODE_OF_CONDUCT.md              @yourusername
+SECURITY.md                     @sheawinkler
+CODE_OF_CONDUCT.md              @sheawinkler
 
 # Tests
-tests/                         @yourusername
-benches/                       @yourusername
+tests/                         @sheawinkler
+benches/                       @sheawinkler
 
 # Examples
-examples/                     @yourusername
+examples/                     @sheawinkler
 
-# Note: Replace @yourusername with the actual GitHub usernames of the code owners.
+# Note: Replace @sheawinkler with the actual GitHub usernames of the code owners.

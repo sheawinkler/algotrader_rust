@@ -5,10 +5,12 @@
 use super::*;
 use std::convert::TryFrom;
 
-macro_rules! tf_or_default {
-    ($v:expr) => {
-        $v.and_then(|s| parse_timeframe(s).ok()).unwrap_or(TimeFrame::OneHour)
-    };
+mod _removed_brace {
+
+
+
+
+
 }
 
 impl TryFrom<&StrategyConfig> for AdvancedStrategy {

@@ -60,7 +60,10 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    tracing_subscriber::fmt::init();
 
     let args = Args::parse();
 
@@ -116,34 +119,9 @@ async fn main() -> Result<()> {
                 println!("✅ Wrote new keypair to {} (pubkey={})", kp_path.display(), kp.pubkey());
                 return Ok(());
             }
-            }
-            Command::Init { config, keypair, force } => {
-                use std::fs;
-                use std::path::PathBuf;
-                use solana_sdk::signature::{Keypair, Signer};
-
-                let cfg_path = PathBuf::from(config);
-                let kp_path = PathBuf::from(keypair);
-
-                if (cfg_path.exists() || kp_path.exists()) && !force {
-                    eprintln!("Config or keypair already exists. Use --force to overwrite.");
-                    std::process::exit(1);
-                }
-
-                if let Some(parent) = cfg_path.parent() { fs::create_dir_all(parent)?; }
-                if let Some(parent) = kp_path.parent() { fs::create_dir_all(parent)?; }
-
-                fs::write(&cfg_path, Config::default_toml())?;
-                println!("✅ Wrote default config to {}", cfg_path.display());
-
-                let kp = Keypair::new();
-                let secret = bs58::encode(kp.to_bytes()).into_string();
-                fs::write(&kp_path, format!("\"{}\"", secret))?;
-                println!("✅ Wrote new keypair to {} (pubkey={})", kp_path.display(), kp.pubkey());
-                return Ok(());
-            }
         }
-    }
+    } // end match & if
+
 
     // Try to load an existing configuration, otherwise fall back to defaults.
     let config = if Path::new(&args.config).exists() {
@@ -156,7 +134,7 @@ async fn main() -> Result<()> {
     
 
     log::info!("Starting trading engine via default command");
-    run_service(&config, false).await?
+    return run_service(&config, false).await;
 }
 
 async fn health() -> impl IntoResponse {
@@ -164,11 +142,7 @@ async fn health() -> impl IntoResponse {
 }
 
 async fn run_service(config: &Config, paper: bool) -> Result<()> {
-    // Initialise structured tracing if not already set by env
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    tracing_subscriber::fmt::init();
+    // structured tracing already initialised in main
 
     log::info!("Trading engine starting (paper={})", paper);
 
@@ -176,18 +150,20 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     use solana_client::nonblocking::rpc_client::RpcClient;
     use solana_sdk::signature::Signer;
     use tokio::time::{sleep, Duration};
+use std::net::TcpListener;
 
     let rpc = RpcClient::new(config.solana.rpc_url.clone());
     let keypair = config.load_keypair().context("failed to load wallet keypair")?;
     let pubkey = keypair.pubkey();
 
     // Spawn a background task that prints balance every 30 s
-    let rpc_clone = rpc.clone();
+    // move rpc into the task (RpcClient is not Clone)
+        let rpc_task = rpc;
     tokio::spawn(async move {
         loop {
-            match rpc_clone.get_balance(&pubkey).await {
-                Ok(lamports) => log::info!("Wallet balance: {} lamports", lamports),
-                Err(e) => log::error!("Error fetching balance: {e}");
+            match rpc_task.get_balance(&pubkey).await {
+                Ok(lamports) => log::info!("Wallet balance: {:.6} SOL", lamports as f64 / 1_000_000_000.0),
+                Err(e) => log::error!("Error fetching balance: {e}"),
             }
             sleep(Duration::from_secs(30)).await;
         }
@@ -195,21 +171,32 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
 
         // --- Launch TradingEngine -------------------------------------------------
     use algotraderv2::TradingEngine;
-    let engine = TradingEngine::with_config(config.clone(), paper);
-    // Spawn the async start loop – runs until cancelled
+    let mut engine = TradingEngine::with_config(config.clone(), paper);
+    // Determine symbol list: use config default_pair
+    let symbols = vec![config.trading.default_pair.clone()];
+    // Spawn the async trading loop – runs until cancelled
     let engine_handle = tokio::spawn(async move {
-        if let Err(e) = engine.start().await {
+        if let Err(e) = engine.start_with_market_router(symbols, None, None).await {
             log::error!("TradingEngine exited with error: {e}");
         }
     });
 
     // Health endpoint
     let app = Router::new().route("/healthz", get(health));
-    let addr: SocketAddr = "127.0.0.1:8888".parse().unwrap();
+    let primary_addr: SocketAddr = "127.0.0.1:8888".parse().unwrap();
+    let listener = match TcpListener::bind(primary_addr) {
+        Ok(l) => l,
+        Err(e) => {
+            log::warn!("Port 8888 unavailable: {} – binding to random port", e);
+            TcpListener::bind("127.0.0.1:0").expect("failed to bind random port")
+        }
+    };
+    let addr = listener.local_addr().expect("no local_addr");
     log::info!("Serving /healthz on http://{}", addr);
 
-    // Run server concurrently; abort on Ctrl-C
-    let server = axum::Server::bind(&addr).serve(app.into_make_service());
+    let server = axum::Server::from_tcp(listener)
+        .expect("failed to create server from listener")
+        .serve(app.into_make_service());
     let server_handle = tokio::spawn(server);
 
     tokio::signal::ctrl_c().await?;

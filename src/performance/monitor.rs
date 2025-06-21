@@ -585,15 +585,11 @@ impl PerformanceMonitor {
 mod tests {
     use super::*;
     use crate::trading::{Order, OrderType};
+        use chrono::Utc;
     
     #[tokio::test]
     async fn test_performance_monitor() {
-        let monitor = PerformanceMonitor::new(
-            Duration::from_secs(300), // 5 minutes
-            3,     // max consecutive losses
-            10.0,  // max drawdown %
-            40.0,  // min win rate %
-        );
+        let monitor = PerformanceMonitor::new();
         
         let order = Order {
             id: "TEST-ORDER".to_string(),
@@ -602,27 +598,28 @@ mod tests {
             size: 1.0,
             price: 100.0,
             order_type: OrderType::Market,
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now().timestamp(),
         };
         
         // Record some trades
-        monitor.record_trade("TestStrategy", &order, 100.0).await;
-        monitor.record_trade("TestStrategy", &order, -50.0).await;
+        monitor.record_trade("TestStrategy", &order, None, 100.0, 0.0, None).await.unwrap();
+        monitor.record_trade("TestStrategy", &order, None, -50.0, 0.0, None).await.unwrap();
         
         // Check metrics
-        let metrics = monitor.get_metrics("TestStrategy").await.unwrap();
+        let metrics = monitor.get_metrics("TestStrategy").await.unwrap().unwrap();
         assert_eq!(metrics.total_trades, 2);
         assert_eq!(metrics.winning_trades, 1);
         assert_eq!(metrics.losing_trades, 1);
         
         // Check position sizing
         let position_size = monitor
-            .get_recommended_position_size("TestStrategy", 10000.0, 0.02)
-            .await;
+            .get_recommended_position_size("TestStrategy", "SOL/USDC", 10000.0, None)
+            .await
+            .unwrap();
         assert!(position_size > 0.0);
         
         // Check performance summary
-        let summary = monitor.get_performance_summary().await;
+        let summary = monitor.get_performance_summary().await.unwrap();
         assert!(summary.contains("TestStrategy"));
     }
 }

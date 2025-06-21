@@ -71,6 +71,10 @@ pub struct TradingConfig {
     
     /// Maximum position size as a percentage of portfolio
     pub max_position_size_pct: f64,
+
+    /// Starting cash balance in USD used to seed the portfolio
+    #[serde(default = "default_starting_balance_usd")]
+    pub starting_balance_usd: f64,
     
     /// Enable/disable trading
     pub trading_enabled: bool,
@@ -100,6 +104,8 @@ pub struct TradingConfig {
     /// Maximum random delay (in ms) between split chunks. Default 1200 ms.
     #[serde(default = "default_split_delay_ms")]
     pub split_delay_ms: u64,
+
+    // ---------- helper defaults below ----------
 }
 
 /// Risk management configuration
@@ -207,6 +213,7 @@ impl Default for TradingConfig {
             split_threshold_sol: default_split_threshold_sol(),
             split_chunk_sol: default_split_chunk_sol(),
             split_delay_ms: default_split_delay_ms(),
+            starting_balance_usd: default_starting_balance_usd(),
         }
     }
 }
@@ -217,6 +224,7 @@ fn default_max_fee_lamports() -> u64 { 5_000 }
 fn default_split_threshold_sol() -> f64 { 1.0 }
 fn default_split_chunk_sol() -> f64 { 0.25 }
 fn default_split_delay_ms() -> u64 { 1_200 }
+fn default_starting_balance_usd() -> f64 { 1000.0 }
 
 impl Default for RiskConfig {
     fn default() -> Self {
@@ -384,8 +392,23 @@ impl Config {
         
         // Then try to load from keypair file
         if let Some(ref keypair_path) = self.wallet.keypair_path {
+            // First try to read as UTF-8 and decode as base58 (the format written by `algotrader init`)
+            match fs::read_to_string(keypair_path) {
+                Ok(s) => {
+                    let trimmed = s.trim().trim_matches('"');
+                    if let Ok(decoded) = bs58::decode(trimmed).into_vec() {
+                        if let Ok(kp) = Keypair::from_bytes(&decoded) {
+                            return Ok(kp);
+                        }
+                    }
+                },
+                Err(_) => { /* fallthrough to raw bytes */ }
+            }
+
+            // Fallback: treat file contents as raw 64-byte keypair bytes
             let keypair_bytes = fs::read(keypair_path)?;
-            let keypair = Keypair::from_bytes(&keypair_bytes).map_err(|e| Error::WalletError(format!("Keypair from_bytes error: {}", e)))?;
+            let keypair = Keypair::from_bytes(&keypair_bytes)
+                .map_err(|e| Error::WalletError(format!("Keypair from_bytes error: {}", e)))?;
             return Ok(keypair);
         }
         
@@ -425,7 +448,7 @@ mod tests {
     #[test]
     fn test_merge_env() {
         temp_env::with_vars(
-            [
+            vec![
                 ("SOLANA_RPC_URL", Some("https://testnet.solana.com")),
                 ("WALLET_PRIVATE_KEY", Some("test_private_key")),
             ],
