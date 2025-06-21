@@ -1,0 +1,33 @@
+# AlgoTraderV2 systemd service unit
+
+# Copy this file to /etc/systemd/system/algotrader.service and adjust paths as needed
+# Then enable & start with:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable algotrader.service
+#   sudo systemctl start algotrader.service
+
+[Unit]
+Description=AlgoTraderV2 Solana Trading Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# *** Adjust these paths to your environment ***
+WorkingDirectory=/opt/algotrader
+ExecStart=/opt/algotrader/target/release/algotrader run
+# Environment file can override RPC URL, etc.
+EnvironmentFile=/opt/algotrader/.env
+
+# Systemd restart policy
+Restart=on-failure
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

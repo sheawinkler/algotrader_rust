@@ -1,0 +1,199 @@
+# Rustfmt configuration for AlgoTraderV2
+
+# Maximum width of each line
+max_width = 100
+
+# Use spaces for indentation
+hard_tabs = false
+
+# Number of spaces per tab
+tab_spaces = 4
+
+# Use tab characters for indentation (overrides hard_tabs and tab_spaces)
+use_try_shorthand = true
+
+# Use field init shorthand if possible
+use_field_init_shorthand = true
+
+# Width of the unit and integration test `mod` items width
+condense_wildcard_suffixes = true
+
+# Controls if `use` statements are grouped by module
+group_imports = "StdExternalCrate"
+
+# Controls where a `where` clause is placed
+where_single_line = false
+
+# Controls if `if`-`else` is chained with `else if`
+control_brace_style = "AlwaysSameLine"
+
+# Controls how struct literal expressions are formatted
+struct_lit_single_line = true
+
+# Controls how function arguments are wrapped in function signatures
+fn_args_layout = "Compressed"
+
+# Controls how match arms are wrapped
+match_arm_blocks = true
+
+# Controls how match arms are wrapped
+match_arm_leading_pipes = "Always"
+
+# Controls how array literals are wrapped
+array_width = 100
+
+# Controls how function calls are wrapped
+fn_call_width = 100
+
+# Controls how struct literals are wrapped
+struct_lit_width = 100
+
+# Controls how function signatures are wrapped
+fn_single_line = true
+
+# Controls how where clauses are wrapped
+where_pred_indent = "Block"
+
+# Controls how use statements are wrapped
+use_small_heuristics = "Default"
+
+# Controls how imports are sorted
+imports_granularity = "Crate"
+
+# Controls how module items are sorted
+reorder_imports = true
+
+# Controls how module items are sorted
+reorder_modules = true
+
+# Controls how module items are sorted
+reorder_impl_items = true
+
+# Controls how module items are sorted
+reorder_struct_fields = true
+
+# Controls how module items are sorted
+reorder_enum_variants = true
+
+# Controls how module items are sorted
+reorder_enum_discriminants = true
+
+# Controls how module items are sorted
+reorder_mod = true
+
+# Controls how module items are sorted
+reorder_use = true
+
+# Controls how module items are sorted
+reorder_impl = true
+
+# Controls how module items are sorted
+reorder_foreign_mod = true
+
+# Controls how module items are sorted
+reorder_foreign_use = true
+
+# Controls how module items are sorted
+reorder_foreign_static = true
+
+# Controls how module items are sorted
+reorder_foreign_type = true
+
+# Controls how module items are sorted
+reorder_foreign_fn = true
+
+# Controls how module items are sorted
+reorder_foreign_macro = true
+
+# Controls how module items are sorted
+reorder_foreign_impl = true
+
+# Controls how module items are sorted
+reorder_foreign_trait = true
+
+# Controls how module items are sorted
+reorder_foreign_trait_impl = true
+
+# Controls how module items are sorted
+reorder_foreign_trait_impl_item = true
+
+# Controls how module items are sorted
+reorder_foreign_trait_item = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_rule = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_def = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_export = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_extern_crate = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_path = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segment = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_after_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_before_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_between_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_in_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_after_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_before_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_between_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_in_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_not_in_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_not_in_self_after_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_not_in_self_before_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_not_in_self_between_self = true
+
+# Controls how module items are sorted
+reorder_foreign_macro_use_self_rename_ident_path_segments_not_in_self_not_in_self_in_self = true

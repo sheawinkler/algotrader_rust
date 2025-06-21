@@ -1,0 +1,201 @@
+# AlgoTraderV2 Configuration
+# This is the default configuration file. Copy this to config.toml and customize as needed.
+
+[general]
+# The name of this bot instance
+bot_name = "algotrader"
+# Log level: trace, debug, info, warn, error, off
+log_level = "info"
+# Enable/disable debug mode
+debug = false
+
+[wallet]
+# Path to the wallet keypair file
+keypair_path = "wallet.json"
+# Minimum SOL balance to maintain (in SOL)
+min_sol_balance = 0.1
+# Maximum SOL to use for transaction fees (in SOL)
+max_fee_sol = 0.001
+
+[solana]
+# Solana RPC endpoint
+rpc_url = "https://api.mainnet-beta.solana.com"
+# WebSocket endpoint (optional)
+ws_url = "wss://api.mainnet-beta.solana.com"
+# Commitment level: processed, confirmed, finalized
+commitment = "confirmed"
+# Request timeout in seconds
+timeout_secs = 30
+# Number of retries for failed requests
+retries = 3
+# Rate limit in requests per second
+rate_limit = 10
+
+[trading]
+# Default trading pair (e.g., SOL/USDC, BTC/USDT)
+default_pair = "SOL/USDC"
+# Default order size in quote currency (e.g., USDC)
+default_order_size = 100.0
+# Maximum number of open positions
+max_open_positions = 5
+# Maximum position size as percentage of portfolio
+max_position_size_pct = 20.0
+# Enable/disable trading
+trading_enabled = false
+# Enable paper trading mode (no real trades)
+paper_trading = true
+# Slippage tolerance percentage
+slippage_tolerance_pct = 0.5
+# Minimum price movement to trigger a trade
+min_price_movement_pct = 0.1
+
+[risk]
+# Maximum allowed drawdown percentage
+max_drawdown_pct = 10.0
+# Maximum risk per position as percentage of portfolio
+max_position_risk_pct = 2.0
+# Daily loss limit percentage
+daily_loss_limit_pct = 5.0
+# Maximum leverage (1.0 = no leverage)
+max_leverage = 1.0
+# Enable/disable stop losses
+stop_loss_enabled = true
+# Default stop loss percentage
+default_stop_loss_pct = 5.0
+# Default take profit percentage
+default_take_profit_pct = 10.0
+# Enable/disable trailing stops
+trailing_stop_enabled = false
+# Trailing stop distance percentage
+trailing_stop_distance_pct = 1.0
+
+[performance]
+# Enable/disable performance tracking
+enabled = true
+# Metrics collection interval in seconds
+collection_interval_secs = 60
+# Maximum number of data points to keep
+max_data_points = 10000
+# Enable detailed logging
+detailed_logging = true
+# Path to store performance data
+# data_dir = "data/performance"
+
+# [dex.jup]
+# enabled = true
+# api_url = "https://quote-api.jup.ag/v6"
+# program_id = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+# max_retries = 3
+# retry_delay_ms = 1000
+
+# [dex.raydium]
+# enabled = true
+# api_url = "https://api.raydium.io/v2"
+# program_id = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
+# max_retries = 3
+# retry_delay_ms = 1000
+
+# [dex.photon]
+# enabled = true
+# api_url = "https://photon-solana-api.bonfida.com"
+# program_id = "PHOTONPjY6HxZKR1a1DmdeEEyZXCujJpYujM3wUSxWf"
+# max_retries = 3
+# retry_delay_ms = 1000
+
+# [strategies.mean_reversion]
+# enabled = true
+# lookback_periods = 20
+# std_dev_threshold = 2.0
+# rsi_period = 14
+# rsi_oversold = 30
+# rsi_overbought = 70
+# take_profit_pct = 5.0
+# stop_loss_pct = 3.0
+# position_size_pct = 5.0
+# cool_down_period_secs = 300
+
+# [strategies.trend_following]
+# enabled = true
+# fast_ma_period = 9
+# slow_ma_period = 21
+# atr_period = 14
+# atr_multiplier = 2.0
+# take_profit_multiplier = 2.0
+# position_size_pct = 2.0
+# max_trades_per_day = 5
+
+[notifications]
+# Enable/disable notifications
+enabled = false
+# Notification providers: console, telegram, discord, email
+providers = ["console"]
+
+# [notifications.telegram]
+# enabled = false
+# bot_token = ""
+# chat_id = ""
+
+# [notifications.discord]
+# enabled = false
+# webhook_url = ""
+
+# [notifications.email]
+# enabled = false
+# smtp_host = "smtp.example.com"
+# smtp_port = 587
+# smtp_username = ""
+# smtp_password = ""
+# from_email = "bot@example.com"
+# to_email = "user@example.com"
+
+[logging]
+# Log file path (leave empty for console only)
+file_path = "logs/algotrader.log"
+# Maximum log file size in MB
+max_size_mb = 10
+# Maximum number of log files to keep
+max_files = 5
+# Enable/disable logging to console
+console = true
+# Enable/disable logging to file
+file = true
+
+[api]
+# Enable/disable the API server
+enabled = false
+# API server host
+host = "127.0.0.1"
+# API server port
+port = 8080
+# API authentication token (leave empty to disable)
+auth_token = ""
+# Enable/disable CORS
+cors_enabled = true
+# Allowed CORS origins (comma-separated)
+cors_origins = ["*"]
+
+# [telemetry]
+# Enable/disable telemetry
+# enabled = true
+# Telemetry server URL
+# server_url = "https://telemetry.example.com"
+# Telemetry interval in seconds
+# interval_secs = 300
+# Enable/disable anonymous usage statistics
+# anonymous_stats = true
+
+# [backtesting]
+# Enable/disable backtesting mode
+# enabled = false
+# Historical data directory
+# data_dir = "data/historical"
+# Start date (YYYY-MM-DD)
+# start_date = "2023-01-01"
+# End date (YYYY-MM-DD), leave empty for current date
+# end_date = ""
+# Initial portfolio value in USD
+# initial_balance = 10000.0
+# Enable/disable visualization
+# visualize = true
+# Output directory for backtest results
+# output_dir = "data/backtest_results"

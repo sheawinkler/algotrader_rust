@@ -1,0 +1,274 @@
+//! init-config – create a default configuration file for AlgoTraderV2
+use anyhow::Result;
+use clap::Parser;
+use std::{fs, path::PathBuf};
+
+use algotraderv2::utils::Config;
+
+#[derive(Parser, Debug)]
+#[command(
+    name    = "init-config",
+    version = env!("CARGO_PKG_VERSION"),
+    about   = "Write a default `config.toml` for AlgoTraderV2"
+)]
+struct Args {
+    /// Output path (default: ./config.toml)
+    #[arg(short, long, default_value = "config.toml")]
+    config: PathBuf,
+
+    /// Overwrite if the file already exists
+    #[arg(short, long)]
+    force: bool,
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    let args = Args::parse();
+
+    if args.config.exists() && !args.force {
+        eprintln!(
+            "Config file {} exists. Use --force to overwrite.",
+            args.config.display()
+        );
+        std::process::exit(1);
+    }
+
+    if let Some(parent) = args.config.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(&args.config, Config::default_toml())?;
+    println!("✅ Wrote default configuration to {}", args.config.display());
+    Ok(())
+}
+
+use algotraderv2::utils::Config;
+
+#[derive(Parser, Debug)]
+#[command(name = "init-config", version, about = "Create a default AlgoTraderV2 config file")]
+struct Args {
+    /// Output path (default: ./config.toml)
+    #[arg(short, long, default_value = "config.toml")]
+    config: PathBuf,
+
+    /// Overwrite existing file
+    #[arg(short, long)]
+    force: bool,
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    let args = Args::parse();
+
+    if args.config.exists() && !args.force {
+        eprintln!(
+            "Config file {} exists. Use --force to overwrite.",
+            args.config.display()
+        );
+        std::process::exit(1);
+    }
+
+    if let Some(parent) = args.config.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(&args.config, Config::default_toml())?;
+    println!("✅ Wrote default configuration to {}", args.config.display());
+    Ok(())
+}
+
+use algotraderv2::utils::Config;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "init-config",
+    version,
+    about = "Create a default configuration file for AlgoTraderV2"
+)]
+struct Args {
+    /// Output path (default: ./config.toml)
+    #[arg(short, long, default_value = "config.toml")]
+    config: PathBuf,
+
+    /// Overwrite if file already exists
+    #[arg(short, long)]
+    force: bool,
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    let args = Args::parse();
+
+    if args.config.exists() && !args.force {
+        eprintln!(
+            "Config file {} exists. Use --force to overwrite.",
+            args.config.display()
+        );
+        std::process::exit(1);
+    }
+
+    if let Some(parent) = args.config.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(&args.config, Config::default_toml())?;
+    println!("✅ Wrote default configuration to {}", args.config.display());
+    Ok(())
+}
+
+
+use algotraderv2::utils::Config;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "init-config",
+    version,
+    about = "Create a default configuration file for AlgoTraderV2"
+)]
+struct Args {
+    /// Output path. Defaults to `config.toml` in the current directory.
+    #[arg(short, long, default_value = "config.toml")]
+    config: PathBuf,
+
+    /// Overwrite if the file already exists.
+    #[arg(short, long)]
+    force: bool,
+}
+
+fn main() -> Result<()> {
+    env_logger::init();
+    let args = Args::parse();
+
+    if args.config.exists() && !args.force {
+        eprintln!(
+            "Config file {} exists. Use --force to overwrite.",
+            args.config.display()
+        );
+        std::process::exit(1);
+    }
+
+    // Create parent directories if necessary
+    if let Some(parent) = args.config.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Write default TOML
+    fs::write(&args.config, Config::default_toml())?;
+    println!("✅ Wrote default configuration to {}", args.config.display());
+    Ok(())
+}
+
+//! Writes default `config.toml` (or a chosen path) based on `Config::default_toml()`.
+
+use algotraderv2::utils::Config;
+use clap::Parser;
+use std::path::PathBuf;
+//! Writes default `config.toml` (or a chosen path) based on Config::default().
+
+use algotraderv2::utils::Config;
+use clap::Parser;
+use log::{error, info, warn};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
+
+/// Initialize AlgoTraderV2 configuration
+#[derive(Parser, Debug)]
+#[clap(
+    name = "init-config",
+    about = "Initialize AlgoTraderV2 configuration",
+    version = env!("CARGO_PKG_VERSION")
+)]
+#[derive(Parser, Debug)]
+#[command(name = "init-config", author, version, about = "Create a default AlgoTraderV2 configuration file")]
+struct Args {
+    /// Path to the configuration file to create
+    #[arg(short, long, default_value = "config.toml")]
+    config: PathBuf,
+
+    /// Overwrite if the file already exists
+    #[arg(short, long)]
+    force: bool,
+}
+
+fn main() -> Result<(), String> {
+    let args = Args::parse();
+
+    let path = args.config;
+
+    if path.exists() && !args.force {
+        eprintln!("Config file {} already exists. Use --force to overwrite.", path.display());
+        std::process::exit(1);
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(&path, Config::default_toml())?;
+    println!("✅ Wrote default configuration to {}", path.display());
+    Ok(())
+}
+    env_logger::init();
+    let args = Args::parse();
+
+        // Determine target path
+    let path = args.config;
+
+    if path.exists() && !args.force {
+        eprintln!("Error: config file {} already exists (use --force to overwrite)", path.display());
+        std::process::exit(1);
+    }
+
+    // Ensure parent directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Always write full default TOML for now
+    std::fs::write(&path, Config::default_toml())?;
+    println!("✅ Wrote default configuration to {}", path.display());
+    Ok(())
+}
+    env_logger::init();
+    let args = Args::parse();
+    
+    
+    if args.show_default_path {
+        let default_path = dirs::config_dir()
+            .map(|p| p.join("algotraderv2"))
+            .unwrap_or_else(|| PathBuf::from("config"));
+        println!("Default config directory: {}", default_path.display());
+        return Ok(());
+    }
+    
+    // Check if config file already exists
+    if args.config.exists() && !args.force {
+        error!(
+            "Configuration file already exists at: {}. Use --force to overwrite.",
+            args.config.display()
+        );
+        info!("To generate a new config with a different name, use: init-config --config path/to/new_config.toml");
+        std::process::exit(1);
+    }
+    
+    // Create parent directories if they don't exist
+    if let Some(parent) = args.config.parent() {
+        if !parent.exists() {
+            info!("Creating directory: {}", parent.display());
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create directory: {}", parent.display())
+            })?;
+        }
+    }
+    
+    // Generate the config file (currently always full default TOML)
+    if args.minimal {
+        let config = Config::default();
+        config.save(&args.config)?;
+
+fn generate_commented_config_template(path: &Path) -> Result<()> {
+    // implementation of generate_commented_config_template
+    unimplemented!()
+}
