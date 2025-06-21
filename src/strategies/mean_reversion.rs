@@ -8,7 +8,7 @@ use ta::{
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
-use crate::utils::indicator_ext::IndicatorValue;
+use crate::utils::indicator_ext::{IndicatorValue, CachedIndicator};
 use super::{TradingStrategy, TimeFrame};
 
 /// Mean Reversion Strategy that identifies overbought/oversold conditions
@@ -19,10 +19,10 @@ pub struct MeanReversionStrategy {
     timeframe: TimeFrame,
     
     // Technical indicators
-    rsi: RelativeStrengthIndex,
+    rsi: CachedIndicator<RelativeStrengthIndex>,
     bb: BollingerBands,
-    ema: ExponentialMovingAverage,
-    std_dev: StandardDeviation,
+    ema: CachedIndicator<ExponentialMovingAverage>,
+    std_dev: CachedIndicator<StandardDeviation>,
     
     // State
     position: Option<Position>,
@@ -50,10 +50,10 @@ impl MeanReversionStrategy {
         Self {
             symbol: symbol.to_string(),
             timeframe,
-            rsi: RelativeStrengthIndex::new(14).unwrap(),
+            rsi: CachedIndicator::new(RelativeStrengthIndex::new(14).unwrap()),
             bb: BollingerBands::new(20, 2.0).unwrap(),
-            ema: ExponentialMovingAverage::new(lookback_period).unwrap(),
-            std_dev: StandardDeviation::new(lookback_period).unwrap(),
+            ema: CachedIndicator::new(ExponentialMovingAverage::new(lookback_period).unwrap()),
+            std_dev: CachedIndicator::new(StandardDeviation::new(lookback_period).unwrap()),
             position: None,
             recent_prices: VecDeque::with_capacity(lookback_period * 2),
             lookback_period,

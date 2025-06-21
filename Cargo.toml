@@ -1,5 +1,6 @@
 [package]
 autobins = false
+autobenches = false
 name = "algotraderv2_rust"
 version = "0.1.0"
 authors = ["Your Name <your.email@example.com>"]

@@ -62,6 +62,12 @@ pub struct BacktestReport {
     pub max_drawdown: f64,
     pub total_trades: usize,
     pub winning_trades: usize,
+    /// Equity value after each bar for curve plotting
+    pub equity_curve: Vec<f64>,
+    /// Simple returns based on equity curve
+    pub returns: Vec<f64>,
+    /// Annualised Sharpe ratio (using simple return series)
+    pub sharpe: f64,
 }
 
 impl BacktestReport {
@@ -73,6 +79,7 @@ impl BacktestReport {
         println!("Max Drawdown  : {:.2}%", self.max_drawdown * 100.0);
         println!("Total Trades  : {}", self.total_trades);
         println!("Winning Trades: {} ({:.2}%)", self.winning_trades, self.winning_trades as f64 / self.total_trades.max(1) as f64 * 100.0);
+        println!("Sharpe Ratio  : {:.2}", self.sharpe);
         println!("===========================");
     }
 }
@@ -100,6 +107,7 @@ impl Backtester {
         let mut winning_trades = 0usize;
         let mut peak_equity = self.starting_balance;
         let mut max_drawdown = 0.0;
+        let mut equity_curve: Vec<f64> = Vec::new();
 
         for data_point in &market_data {
             // update last price map
@@ -141,7 +149,22 @@ impl Backtester {
             if equity > peak_equity { peak_equity = equity; }
             let drawdown = (peak_equity - equity) / peak_equity;
             if drawdown > max_drawdown { max_drawdown = drawdown; }
+            equity_curve.push(equity);
         }
+
+        // compute returns & sharpe
+        let mut returns: Vec<f64> = Vec::new();
+        for w in equity_curve.windows(2) {
+            let prev = w[0];
+            let curr = w[1];
+            if prev > 0.0 {
+                returns.push((curr - prev) / prev);
+            }
+        }
+        let mean_ret = returns.iter().copied().sum::<f64>() / returns.len().max(1) as f64;
+        let var = returns.iter().map(|r| (r - mean_ret).powi(2)).sum::<f64>() / returns.len().max(1) as f64;
+        let sd = var.sqrt();
+        let sharpe = if sd > 0.0 { mean_ret / sd * (returns.len() as f64).sqrt() } else { 0.0 };
 
         let ending_balance = portfolio.equity(&prices);
         Ok(BacktestReport {
@@ -151,6 +174,9 @@ impl Backtester {
             max_drawdown,
             total_trades,
             winning_trades,
+            equity_curve,
+            returns,
+            sharpe,
         })
     }
 }
@@ -171,14 +197,23 @@ pub trait HistoricalDataProvider {
 
 pub mod providers;
 
-
 /// Convenience helper used by CLI until full engine integration is ready
 pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str) -> Result<()> {
-    
-                                    let provider = crate::backtest::providers::CSVHistoricalDataProvider;
-    let rows = provider.load(data_path)?;
-    println!("Loaded {} rows for timeframe {}", rows.len(), timeframe);
-    // TODO: integrate with TradingBot; for now just success
+    use crate::strategies::{mean_reversion::MeanReversionStrategy, TradingStrategy, TimeFrame};
+    // 1. Provider
+    let provider = crate::backtest::providers::CSVHistoricalDataProvider;
+    // 2. Build backtester
+    let strategies: Vec<Box<dyn TradingStrategy>> = vec![
+        Box::new(MeanReversionStrategy::new("UNK/UNK", TimeFrame::OneHour, 20, 2.0, 2.0, 1.0)),
+    ];
+    let mut bt = Backtester {
+        data_provider: Box::new(provider),
+        timeframe: timeframe.to_string(),
+        starting_balance: 10_000.0,
+        strategies,
+    };
+    let report = bt.run(data_path).await?;
+    report.print();
     Ok(())
 }
 // TODO: Add result reporting and export utilities

@@ -1,6 +1,7 @@
 //! Command-line interface for the AlgoTraderV2 trading bot
 
 use clap::{Parser, Subcommand};
+use crate::backtest;
 use std::path::PathBuf;
 use anyhow::Result;
 use crate::config;
@@ -52,6 +53,17 @@ pub enum Commands {
         command: WalletCommands,
     },
     
+    /// Run a simple CSV backtest
+    Backtest {
+        /// Path to CSV market data file
+        #[arg(short, long, value_name = "FILE")]
+        data: PathBuf,
+
+        /// Timeframe string e.g. 1m, 1h
+        #[arg(short = 't', long, default_value = "1h", value_name="TF")]
+        timeframe: String,
+    },
+
     /// Show version information
     Version,
 }
@@ -85,10 +97,18 @@ impl Cli {
     }
     
     /// Execute the CLI command
-    pub async fn execute(self) -> Result<()> {
+    async fn execute(self) -> Result<()> {
         match self.command {
             Commands::Start { config, debug } => {
                 self.handle_start(config, debug).await
+            }
+            Commands::Backtest { data, timeframe } => {
+                let path = data;
+                if !path.exists() {
+                    anyhow::bail!("Data file not found: {}", path.display());
+                }
+                println!("Running backtest on {}...", path.display());
+                crate::backtest::simple_backtest(&path, &timeframe).await
             }
             Commands::Init { output, commented } => {
                 self.handle_init(output, commented)
@@ -166,6 +186,16 @@ impl Cli {
         }
     }
     
+    async fn handle_backtest(&self, data_path: PathBuf, timeframe: String) -> Result<()> {
+        // Use the CSV provider for now
+        let path = data_path;
+        if !path.exists() {
+            anyhow::bail!("Data file not found: {}", path.display());
+        }
+        println!("Running backtest on {}...", path.display());
+        crate::backtest::simple_backtest(&path, &timeframe).await
+    }
+
     async fn handle_wallet(&self, command: WalletCommands) -> Result<()> {
         match command {
             WalletCommands::Info { config } => {

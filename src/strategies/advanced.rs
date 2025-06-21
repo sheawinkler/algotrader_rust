@@ -15,7 +15,7 @@ use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
 use crate::utils::types::MarketRegime;
-use crate::utils::indicator_ext::IndicatorValue;
+use crate::utils::indicator_ext::{IndicatorValue, CachedIndicator};
 use super::{TradingStrategy, TimeFrame};
 
 /// Advanced trading strategy that combines multiple indicators and adapts to market conditions
@@ -31,9 +31,9 @@ pub struct AdvancedStrategy {
     kc: KeltnerChannel,
     mfi: MoneyFlowIndex,
     stoch: StochasticOscillator,
-    atr: AverageTrueRange,
-    fast_ema: ExponentialMovingAverage,
-    slow_ema: ExponentialMovingAverage,
+    atr: CachedIndicator<AverageTrueRange>,
+    fast_ema: CachedIndicator<ExponentialMovingAverage>,
+    slow_ema: CachedIndicator<ExponentialMovingAverage>,
     
     // State
     last_signal: Option<Signal>,
@@ -67,9 +67,9 @@ impl AdvancedStrategy {
             kc: KeltnerChannel::new(kc_period, kc_multiplier).unwrap(),
             mfi: MoneyFlowIndex::new(mfi_period).unwrap(),
             stoch: StochasticOscillator::new(stoch_period, 3, 3).unwrap(),
-            atr: AverageTrueRange::new(atr_period).unwrap(),
-            fast_ema: ExponentialMovingAverage::new(9).unwrap(),
-            slow_ema: ExponentialMovingAverage::new(21).unwrap(),
+            atr: CachedIndicator::new(AverageTrueRange::new(atr_period).unwrap()),
+            fast_ema: CachedIndicator::new(ExponentialMovingAverage::new(9).unwrap()),
+            slow_ema: CachedIndicator::new(ExponentialMovingAverage::new(21).unwrap()),
             last_signal: None,
             position: None,
             recent_prices: VecDeque::with_capacity(window_size * 2),
@@ -122,9 +122,9 @@ impl AdvancedStrategy {
     
     /// Calculate position size based on risk management rules
     fn calculate_position_size(&self, price: f64, account_balance: f64, risk_percent: f64) -> f64 {
-        let atr = IndicatorValue::value(&self.atr);
+        let atr_val = IndicatorValue::value(&self.atr);
         let risk_amount = account_balance * (risk_percent / 100.0);
-        let position_size = risk_amount / (atr * 2.0); // Use 2x ATR for position sizing
+        let position_size = risk_amount / (atr_val * 2.0); // Use 2x ATR for position sizing
         position_size.max(0.0)
     }
 }

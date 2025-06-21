@@ -12,7 +12,7 @@ use crate::indicators::AverageDirectionalIndex;
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
-use crate::utils::indicator_ext::IndicatorValue;
+use crate::utils::indicator_ext::{IndicatorValue, CachedIndicator};
 use super::{TradingStrategy, TimeFrame};
 
 /// Trend Following Strategy that identifies and rides market trends
@@ -23,9 +23,9 @@ pub struct TrendFollowingStrategy {
     timeframe: TimeFrame,
     
     // Technical indicators
-    fast_ema: ExponentialMovingAverage,
-    medium_ema: ExponentialMovingAverage,
-    slow_ema: ExponentialMovingAverage,
+    fast_ema: CachedIndicator<ExponentialMovingAverage>,
+    medium_ema: CachedIndicator<ExponentialMovingAverage>,
+    slow_ema: CachedIndicator<ExponentialMovingAverage>,
     macd: MovingAverageConvergenceDivergence,
     ppc: PercentagePriceOscillator,
     adx: AverageDirectionalIndex,
@@ -72,9 +72,9 @@ impl TrendFollowingStrategy {
         Self {
             symbol: symbol.to_string(),
             timeframe,
-            fast_ema: ExponentialMovingAverage::new(fast_ema_period).unwrap(),
-            medium_ema: ExponentialMovingAverage::new(medium_ema_period).unwrap(),
-            slow_ema: ExponentialMovingAverage::new(slow_ema_period).unwrap(),
+            fast_ema: CachedIndicator::new(ExponentialMovingAverage::new(fast_ema_period).unwrap()),
+            medium_ema: CachedIndicator::new(ExponentialMovingAverage::new(medium_ema_period).unwrap()),
+            slow_ema: CachedIndicator::new(ExponentialMovingAverage::new(slow_ema_period).unwrap()),
             macd: MovingAverageConvergenceDivergence::new(macd_fast as usize, macd_slow as usize, macd_signal as usize).unwrap(),
             ppc: PercentagePriceOscillator::new(fast_ema_period, slow_ema_period, macd_signal as usize).unwrap(),
             adx: AverageDirectionalIndex::new(adx_period as usize).unwrap(),
@@ -120,9 +120,9 @@ impl TrendFollowingStrategy {
     }
     
     /// Calculate position size based on volatility and account balance
-    fn calculate_position_size(&self, price: f64, account_balance: f64, atr: f64) -> f64 {
+    fn calculate_position_size(&self, price: f64, account_balance: f64, atr_val: f64) -> f64 {
         let risk_amount = account_balance * self.position_size_pct;
-        let position_size = risk_amount / (atr * 2.0); // Use 2x ATR for position sizing
+        let position_size = risk_amount / (atr_val * 2.0); // Use 2x ATR for position sizing
         position_size.max(0.0)
     }
     
@@ -185,7 +185,7 @@ impl TradingStrategy for TrendFollowingStrategy {
         let _ = self.macd.next(market_data.close);
         let _ = self.ppc.next(market_data.close);
         let _ = self.adx.next(market_data.close);
-        let atr = self.atr.next(market_data.high.unwrap_or(market_data.close) - market_data.low.unwrap_or(market_data.close));
+        let atr_val = self.atr.next(market_data.high.unwrap_or(market_data.close) - market_data.low.unwrap_or(market_data.close));
         
         // Update trend direction
         self.update_trend_direction(market_data.close);
@@ -215,7 +215,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                     "strategy": "TrendFollowingExit",
                     "trend_direction": format!("{:?}", self.trend_direction),
                     "adx": IndicatorValue::value(&self.adx),
-                    "atr": atr,
+                    "atr": atr_val,
                 })),
             });
         } else {
@@ -240,7 +240,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                                 "strategy": "TrendFollowingLong",
                                 "trend_direction": "Uptrend",
                                 "adx": IndicatorValue::value(&self.adx),
-                                "atr": atr,
+                                "atr": atr_val,
                                 "fast_ema": IndicatorValue::value(&self.fast_ema),
                                 "medium_ema": IndicatorValue::value(&self.medium_ema),
                             })),
@@ -266,7 +266,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                                 "strategy": "TrendFollowingShort",
                                 "trend_direction": "Downtrend",
                                 "adx": IndicatorValue::value(&self.adx),
-                                "atr": atr,
+                                "atr": atr_val,
                                 "fast_ema": IndicatorValue::value(&self.fast_ema),
                                 "medium_ema": IndicatorValue::value(&self.medium_ema),
                             })),
