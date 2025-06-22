@@ -37,6 +37,9 @@ enum Command {
         /// Timeframe, e.g. 1m, 5m, 1h (optional)
         #[arg(long)]
         timeframe: Option<String>,
+        /// Output CSV file path
+        #[arg(long)]
+        output: Option<String>,
         /// Use meta-strategy engine to pick best strategy
         #[arg(long)]
         meta: bool,
@@ -78,20 +81,22 @@ async fn main() -> Result<()> {
     // Handle subcommands first so we can fall back to legacy default behaviour
     if let Some(cmd) = &args.command {
         match cmd {
-            Command::Backtest { data, timeframe, meta } => {
+            Command::Backtest { data, timeframe, output, meta } => {
                 println!("⚙️  Starting backtest on {} (tf={})", data, timeframe.clone().unwrap_or_else(|| "default".into()));
                 use algotraderv2::backtest::simple_backtest;
 use algotraderv2::meta::MetaStrategyEngine;
 
                 // Run simple backtest
-                if meta {
-                    let tf = timeframe.as_deref().unwrap_or("default");
-                    let mut engine = MetaStrategyEngine::new(tf, 10_000.0, "meta_cache")?;
-                    let ranked = engine.select_best_strategy(&std::path::PathBuf::from(&data))?;
-                    println!("🏆 Best strategy: {} (Sharpe {:.2}, DD {:.2}%)", ranked.strategy.name(), ranked.sharpe, ranked.max_drawdown*100.0);
-                } else {
-                    simple_backtest(&std::path::PathBuf::from(data), timeframe.as_deref().unwrap_or("default")).await?;
-                }
+                if *meta {
+                     let tf = timeframe.as_deref().unwrap_or("default");
+                     let mut engine = MetaStrategyEngine::new(tf, 10_000.0, "meta_cache")?;
+                     let ranked = engine.select_best_strategy(&std::path::PathBuf::from(&data))?;
+                     println!("🏆 Best strategy: {} (Sharpe {:.2}, DD {:.2}%)", ranked.strategy.name(), ranked.sharpe, ranked.max_drawdown*100.0);
+                 } else {
+                     let tf = timeframe.as_deref().unwrap_or("default");
+                     let out_path = output.as_ref().map(|s| std::path::Path::new(s));
+                     simple_backtest(&std::path::PathBuf::from(data), tf, out_path).await?;
+                 }
                 return Ok(());
             }
             Command::Run { paper } => {

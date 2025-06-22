@@ -83,6 +83,43 @@ pub struct BacktestReport {
 }
 
 impl BacktestReport {
+    /// Save equity curve plot (PNG)
+    pub fn to_png<P: AsRef<std::path::Path>>(&self, path: P) -> anyhow::Result<()> {
+        use plotters::prelude::*;
+        use plotters::series::LineSeries;
+        use plotters_bitmap::bitmap_pixel::RGBPixel;
+        use plotters_bitmap::BitMapBackend;
+        let root = BitMapBackend::<RGBPixel>::new(path.as_ref(), (800, 480));
+        let root = root.into_drawing_area();
+        root.fill(&WHITE)?;
+        let max_eq = self.equity_curve.iter().cloned().fold(0./0., f64::max);
+        let min_eq = self.equity_curve.iter().cloned().fold(f64::MAX, f64::min);
+        let mut chart = ChartBuilder::on(&root)
+            .margin(20)
+            .caption("Equity Curve", ("sans-serif", 30))
+            .x_label_area_size(30)
+            .y_label_area_size(50)
+            .build_cartesian_2d(0..self.equity_curve.len(), min_eq..max_eq)?;
+        chart.configure_mesh().draw()?;
+        chart.draw_series(LineSeries::new(
+            self.equity_curve.iter().enumerate().map(|(i, v)| (i, *v)),
+            &BLUE,
+        ))?;
+        Ok(())
+    }
+
+    /// Export equity curve and summary metrics to CSV
+    /// Export equity curve and summary metrics to CSV
+    pub fn to_csv<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+        let mut wtr = csv::Writer::from_path(path)?;
+        // header
+        wtr.write_record(["index", "equity"])?;
+        for (idx, eq) in self.equity_curve.iter().enumerate() {
+            wtr.write_record(&[idx.to_string(), eq.to_string()])?;
+        }
+        wtr.flush()?;
+        Ok(())
+    }
     pub fn print(&self) {
         println!("===== BACKTEST REPORT =====");
         println!("Start Balance : {:.2}", self.starting_balance);
@@ -260,7 +297,7 @@ pub mod providers;
 pub mod cache;
 
 /// Convenience helper used by CLI until full engine integration is ready
-pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str) -> Result<()> {
+pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str, output: Option<&std::path::Path>) -> Result<()> {
     use crate::strategies::{MeanReversionStrategy, TradingStrategy, TimeFrame};
     // 1. Provider
     let provider = crate::backtest::providers::CSVHistoricalDataProvider::new();
@@ -279,8 +316,23 @@ pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str) -> Result<()>
         strategies,
         cache: None,
     };
-    let report = bt.run(data_path).await?;
-    report.print();
+    let rpt = bt.run(data_path).await?;
+    if let Some(path) = output {
+        if let Err(e) = rpt.to_csv(path) {
+            log::error!("Failed to write CSV report: {e}");
+        } else {
+            log::info!("CSV report written to {}", path.display());
+            // also render PNG next to CSV
+            let mut png_path = std::path::PathBuf::from(path);
+            png_path.set_extension("png");
+            if let Err(e) = rpt.to_png(&png_path) {
+                log::error!("Failed to write PNG chart: {e}");
+            } else {
+                log::info!("PNG chart written to {}", png_path.display());
+            }
+        }
+    }
+    rpt.print();
     Ok(())
 }
 // TODO: Add result reporting and export utilities

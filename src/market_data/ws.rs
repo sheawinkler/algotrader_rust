@@ -18,12 +18,67 @@ use crate::utils::types::TradingPair;
 /// Shared cache of latest prices.
 pub type PriceCache = Arc<RwLock<HashMap<TradingPair, f64>>>;
 
+/// Internal resilient WebSocket loop with automatic reconnection/back-off.
+async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
+    use tokio::time::{sleep, Duration};
+    let ws_url = "wss://quote-api.jup.ag/v6/ws";
+    loop {
+        match connect_async(ws_url).await {
+            Ok((mut ws, _)) => {
+                log::info!("[WS] Connected to Jupiter price stream ({} symbols)", symbols.len());
+                // Send subscription list
+                let sub_msg = serde_json::json!({
+                    "type": "subscribe",
+                    "channel": "price",
+                    "symbols": symbols,
+                });
+                if ws.send(Message::Text(sub_msg.to_string())).await.is_err() {
+                    log::error!("[WS] Failed to send subscribe message");
+                }
+                // Main read loop
+                while let Some(msg) = ws.next().await {
+                    match msg {
+                        Ok(Message::Text(txt)) => {
+                            if let Ok(evt) = serde_json::from_str::<PriceUpdate>(&txt) {
+                                let pair = TradingPair::new(&evt.base, &evt.quote);
+                                let mut guard = cache.write().await;
+                                guard.insert(pair, evt.price);
+                            }
+                        }
+                        Ok(Message::Ping(_)) => {
+                            // Respond to pings to keep connection alive
+                            let _ = ws.send(Message::Pong(Vec::new())).await;
+                        }
+                        Err(e) => {
+                            log::warn!("[WS] Stream error: {} – reconnecting", e);
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("[WS] Connection error: {} – retrying in 10s", e);
+            }
+        }
+        // Back-off before reconnect
+        sleep(Duration::from_secs(10)).await;
+    }
+}
+
+
 /// Spawn the background WebSocket task. The handle should be kept so the task
 /// lives as long as the engine. If it crashes, the caller may decide to
 /// restart it.
 pub fn spawn_price_feed(pairs: &[TradingPair], cache: PriceCache) -> JoinHandle<()> {
     let symbols: Vec<String> = pairs.iter().map(|p| format!("{}/{}", p.base, p.quote)).collect();
     let cache_clone = cache.clone();
+        // Launch resilient WebSocket listener in separate task
+        {
+            let ws_symbols = symbols.clone();
+            let ws_cache = cache_clone.clone();
+            tokio::spawn(async move { run_ws_loop(ws_symbols, ws_cache).await; });
+        }
 
     tokio::spawn(async move {
         // ---- Jupiter Price Feed ----
