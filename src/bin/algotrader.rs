@@ -168,22 +168,7 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     use tokio::time::{sleep, Duration};
 use std::net::TcpListener;
 
-    let rpc = RpcClient::new(config.solana.rpc_url.clone());
-    let keypair = config.load_keypair().context("failed to load wallet keypair")?;
-    let pubkey = keypair.pubkey();
 
-    // Spawn a background task that prints balance every 30 s
-    // move rpc into the task (RpcClient is not Clone)
-        let rpc_task = rpc;
-    tokio::spawn(async move {
-        loop {
-            match rpc_task.get_balance(&pubkey).await {
-                Ok(lamports) => log::info!("Wallet balance: {:.6} SOL", lamports as f64 / 1_000_000_000.0),
-                Err(e) => log::error!("Error fetching balance: {e}"),
-            }
-            sleep(Duration::from_secs(30)).await;
-        }
-    });
 
         // --- Launch TradingEngine -------------------------------------------------
     use algotraderv2::TradingEngine;

@@ -24,12 +24,16 @@ pub mod risk;
 
 pub mod dashboard;
 pub mod market_data;
+pub mod wallet;
 
-
+// Import wallet module
+use crate::wallet::Wallet;
 
 use crate::engine::market_router::MarketRouter;
 use std::collections::HashMap;
 use crate::dex::DexFactory;
+use serde::Deserialize;
+
 use crate::strategies::TradingStrategy;
 use crate::utils::types::PendingOrder;
 use crate::performance::PerformanceMonitor;
@@ -42,10 +46,6 @@ use crate::risk::{RiskRule, RiskAction};
 use crate::market_data::ws::{self as market_ws, PriceCache};
 use tokio::task::JoinHandle;
 use std::sync::Arc;
-
-
-
-
 
 /// Arbitrage opportunity struct
 #[derive(Debug, Clone)]
@@ -92,6 +92,8 @@ pub struct TradingEngine {
     pub trading_wallet: String, // For all trade execution
     pub personal_wallet: String, // For review and analytics
     pub wallet_analyzer: Option<WalletAnalyzer>,
+    // Wallet (None in paper mode)
+    pub wallet: Option<Wallet>,
     // Portfolio tracking
     pub portfolio: crate::portfolio::Portfolio,
     // Risk management rules
@@ -146,6 +148,8 @@ impl TradingEngine {
     }
     /// Construct engine from configuration
     pub fn with_config(config: crate::config::Config, paper_trading: bool) -> Self {
+        use solana_client::nonblocking::rpc_client::RpcClient;
+        use solana_sdk::signature::Signer;
         // Build strategies first
         // Extract execution parameters before moving config
         let slippage_bps = config.trading.slippage_bps;
@@ -176,6 +180,19 @@ impl TradingEngine {
         }
         let price_feed_handle = market_ws::spawn_price_feed(&price_pairs, price_cache.clone());
         let starting_cash = config.trading.starting_balance_usd;
+        let wallet_instance = if !paper_trading {
+            match config.load_keypair() {
+                Ok(kp) => {
+                    let rpc = RpcClient::new(config.solana.rpc_url.clone());
+                    Some(Wallet::new(rpc, kp))
+                }
+                Err(e) => {
+                    log::error!("Failed to load keypair: {e}. Running in paper mode");
+                    None
+                }
+            }
+        } else { None };
+
         let portfolio = crate::portfolio::Portfolio::new(starting_cash);
         let risk_rules: Vec<Box<dyn crate::risk::RiskRule>> = vec![
             Box::new(crate::risk::StopLossRule::new(0.05)),
@@ -275,6 +292,7 @@ impl TradingEngine {
             paper_trading,
             enable_arbitrage: false,
             risk_rules,
+            wallet: wallet_instance,
         }
     }
 

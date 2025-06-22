@@ -6,6 +6,8 @@ use crate::utils::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::env;
+use aes_gcm::{Aead, KeyInit, Aes256Gcm, Nonce};
+use sha2::{Digest, Sha256};
 use solana_sdk::signature::Keypair;
 
 pub use template::{generate_config_template, generate_commented_config_template};
@@ -374,6 +376,11 @@ impl Config {
             self.wallet.private_key = Some(private_key);
         }
         
+        // Priority env var override for absolute keypair path
+        if let Ok(env_keypair) = env::var("SOLANA_KEYPAIR") {
+            self.wallet.keypair_path = Some(env_keypair);
+        }
+        
         if let Ok(keypair_path) = env::var("WALLET_KEYPAIR_PATH") {
             self.wallet.keypair_path = Some(keypair_path);
         }
@@ -381,7 +388,7 @@ impl Config {
         Ok(())
     }
     
-    /// Load the wallet keypair
+    
     pub fn load_keypair(&self) -> Result<Keypair> {
         // Try to load from private key first
         if let Some(ref private_key) = self.wallet.private_key {
@@ -405,6 +412,16 @@ impl Config {
                 Err(_) => { /* fallthrough to raw bytes */ }
             }
 
+            // If encrypted file (ends with .enc) attempt decryption first
+            if keypair_path.ends_with(".enc") {
+                if let Ok(pass) = env::var("KEYFILE_PASSPHRASE") {
+                    if let Ok(decrypted) = Self::decrypt_keyfile(keypair_path, &pass) {
+                        if let Ok(kp) = Keypair::from_bytes(&decrypted) {
+                            return Ok(kp);
+                        }
+                    }
+                }
+            }
             // Fallback: treat file contents as raw 64-byte keypair bytes
             let keypair_bytes = fs::read(keypair_path)?;
             let keypair = Keypair::from_bytes(&keypair_bytes)
