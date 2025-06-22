@@ -17,7 +17,12 @@ struct CsvRow {
 }
 
 /// CSV provider that reads OHLCV rows into `MarketData` records
+#[derive(Clone)]
 pub struct CSVHistoricalDataProvider;
+
+impl CSVHistoricalDataProvider {
+    pub fn new() -> Self { Self }
+}
 
 impl HistoricalDataProvider for CSVHistoricalDataProvider {
     fn load(&self, data_file: &PathBuf) -> Result<Vec<MarketData>> {
@@ -47,5 +52,9 @@ impl HistoricalDataProvider for CSVHistoricalDataProvider {
             });
         }
         Ok(out)
+    }
+
+    fn box_clone(&self) -> Box<dyn HistoricalDataProvider> {
+        Box::new(self.clone())
     }
 }

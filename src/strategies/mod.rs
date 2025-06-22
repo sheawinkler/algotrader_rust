@@ -10,6 +10,7 @@ mod meme_arbitrage;
 mod performance_aware;
 mod momentum;
 mod bundle_sniper;
+pub mod registry;
 mod config_impls;
 
 pub use advanced::AdvancedStrategy;
@@ -34,6 +35,8 @@ pub use crate::performance::{
 
 use std::error::Error;
 use async_trait::async_trait;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::trading::{MarketData, Signal, Position, Order};
@@ -61,21 +64,29 @@ pub trait TradingStrategy: Send + Sync {
     
     /// Get current positions
     fn get_positions(&self) -> Vec<&Position>;
+    /// Downcast helper for dynamic typing
+    fn as_any(&self) -> &dyn std::any::Any where Self: 'static + Sized { self }
 }
 
-// Allow Box<dyn TradingStrategy> to itself satisfy TradingStrategy by delegating
+// Trait enabling cloning of boxed strategies
 #[async_trait]
-impl<T: TradingStrategy + ?Sized> TradingStrategy for Box<T> {
-    fn name(&self) -> &str { (**self).name() }
-    fn timeframe(&self) -> TimeFrame { (**self).timeframe() }
-    fn symbols(&self) -> Vec<String> { (**self).symbols() }
-    async fn generate_signals(&mut self, market_data: &MarketData) -> Vec<Signal> {
-        (**self).generate_signals(market_data).await
-    }
-    fn on_order_filled(&mut self, order: &Order) { (**self).on_order_filled(order); }
-    fn on_trade_error(&mut self, order: &Order, err: &anyhow::Error) { (**self).on_trade_error(order, err); }
-    fn get_positions(&self) -> Vec<&Position> { (**self).get_positions() }
+pub trait TradingStrategyClone: TradingStrategy {
+    fn box_clone(&self) -> Box<dyn TradingStrategy>;
 }
+
+impl<T> TradingStrategyClone for T
+where
+    T: TradingStrategy + Clone + 'static,
+{
+    fn box_clone(&self) -> Box<dyn TradingStrategy> {
+        Box::new(self.clone())
+    }
+}
+
+// Removed custom Clone impl; use box_clone directly where needed
+
+
+// blanket impl for Box<T> was removed; trait objects are used directly
 
 /// Time frame for the strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -1,10 +1,11 @@
 //! Backtesting framework for AlgoTraderV2 Rust
 
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize}; // SimulatedTrade and BacktestReport
 
 // Backtester struct with portfolio simulation and basic reporting
 /// Result of a single simulated trade
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulatedTrade {
     pub timestamp: i64,
     pub symbol: String,
@@ -16,9 +17,9 @@ pub struct SimulatedTrade {
 
 /// Simple portfolio representation used during backtest
 #[derive(Debug, Default, Clone)]
-pub struct Portfolio {
+pub struct Portfolio { // Backtest-only lightweight portfolio
     pub cash: f64,
-    pub positions: HashMap<String, f64>, // symbol -> qty
+    pub positions: HashMap<String, crate::portfolio::Position>, // symbol -> detailed position
     pub realized_pnl: f64,
 }
 
@@ -32,21 +33,32 @@ impl Portfolio {
         match trade.side {
             crate::utils::types::OrderSide::Buy => {
                 self.cash -= trade.qty * trade.price;
-                *self.positions.entry(trade.symbol.clone()).or_default() += trade.qty;
+                let pos = self.positions.entry(trade.symbol.clone()).or_default();
+                pos.update_on_buy(trade.qty, trade.price);
             }
             crate::utils::types::OrderSide::Sell => {
                 self.cash += trade.qty * trade.price;
-                *self.positions.entry(trade.symbol.clone()).or_default() -= trade.qty;
-                self.realized_pnl += trade.pnl;
+                let pos = self.positions.entry(trade.symbol.clone()).or_default();
+                let pnl = pos.update_on_sell(trade.qty, trade.price);
+                self.realized_pnl += pnl;
             }
         }
     }
 
+    pub fn update_on_sell(&mut self, symbol: &str, qty: f64, price: f64) -> f64 {
+        let pnl = if let Some(pos) = self.positions.get_mut(symbol) {
+            pos.update_on_sell(qty, price)
+        } else { 0.0 };
+        self.cash += qty * price;
+        self.realized_pnl += pnl;
+        pnl
+    }
+
     pub fn equity(&self, prices: &HashMap<String, f64>) -> f64 {
         let mut eq = self.cash;
-        for (sym, qty) in &self.positions {
+        for (sym, pos) in &self.positions {
             if let Some(price) = prices.get(sym) {
-                eq += qty * price;
+                eq += pos.size * price;
             }
         }
         eq
@@ -54,7 +66,7 @@ impl Portfolio {
 }
 
 /// Summary of backtest results
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BacktestReport {
     pub starting_balance: f64,
     pub ending_balance: f64,
@@ -89,10 +101,29 @@ pub struct Backtester {
     pub timeframe: String,
     pub starting_balance: f64,
     pub strategies: Vec<Box<dyn crate::strategies::TradingStrategy>>, // strategies to evaluate
+    pub cache: Option<crate::backtest::cache::BacktestCache>,
+    pub risk_rules: Vec<Box<dyn crate::risk::RiskRule>>,
 }
 
 impl Backtester {
     pub async fn run(&mut self, data_file: &PathBuf) -> Result<BacktestReport> {
+        // determine date range for caching
+        let market_data = self.data_provider.load(data_file)?;
+        if market_data.is_empty() {
+            return Err(crate::Error::DataError("No market data loaded".to_string()));
+        }
+        let start_ts = market_data.first().unwrap().timestamp;
+        let end_ts = market_data.last().unwrap().timestamp;
+
+        // strategy name concat if single strategy else "multi"
+        let strat_key = if self.strategies.len()==1 { self.strategies[0].name().to_string() } else { "multi".to_string() };
+        if let Some(cache) = &self.cache {
+            if let Some(cached) = cache.get(&strat_key, "UNK", &self.timeframe, start_ts, end_ts)? {
+                return Ok(cached);
+            }
+        }
+
+        // use loaded data for simulation
         let market_data = self.data_provider.load(data_file)?;
         if market_data.is_empty() {
             return Err(crate::Error::DataError("No market data loaded".to_string()));
@@ -150,6 +181,23 @@ impl Backtester {
             let drawdown = (peak_equity - equity) / peak_equity;
             if drawdown > max_drawdown { max_drawdown = drawdown; }
             equity_curve.push(equity);
+
+            // ---------- Risk rule evaluation ----------
+            // iterate over a snapshot of open positions to avoid borrow issues
+            let positions_snapshot: std::collections::HashMap<String, crate::portfolio::Position> = portfolio.positions.clone();
+            for (sym, pos) in positions_snapshot {
+                if pos.size <= 0.0 { continue; }
+                if let Some(price) = prices.get(&sym) {
+                    for rule in &self.risk_rules {
+                        if let Some(RiskAction::ClosePosition) = rule.evaluate(&sym, &pos, *price) {
+                            let pnl = portfolio.update_on_sell(&sym, pos.size, *price);
+                            total_trades += 1;
+                            if pnl > 0.0 { winning_trades += 1; }
+                            break; // after close, stop evaluating more rules for this pos
+                        }
+                    }
+                }
+            }
         }
 
         // compute returns & sharpe
@@ -167,7 +215,7 @@ impl Backtester {
         let sharpe = if sd > 0.0 { mean_ret / sd * (returns.len() as f64).sqrt() } else { 0.0 };
 
         let ending_balance = portfolio.equity(&prices);
-        Ok(BacktestReport {
+        let report = BacktestReport {
             starting_balance: self.starting_balance,
             ending_balance,
             realized_pnl: portfolio.realized_pnl,
@@ -177,40 +225,59 @@ impl Backtester {
             equity_curve,
             returns,
             sharpe,
-        })
+        };
+        // store in cache
+        if let Some(cache)=&self.cache{
+            let _ = cache.insert(&strat_key, "UNK", &self.timeframe, start_ts, end_ts, &report);
+        }
+        Ok(report)
     }
 }
 
 use crate::Result;
+use crate::risk::{RiskRule, RiskAction};
 
 use crate::utils::types::MarketData;
 
 use std::path::PathBuf;
 
 /// Trait for historical data providers
-pub trait HistoricalDataProvider {
+pub trait HistoricalDataProvider: Send + Sync {
     fn load(&self, data_file: &PathBuf) -> Result<Vec<MarketData>>;
+    fn box_clone(&self) -> Box<dyn HistoricalDataProvider>;
+}
+
+impl Clone for Box<dyn HistoricalDataProvider> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
 }
 
 
 
 
 pub mod providers;
+pub mod cache;
 
 /// Convenience helper used by CLI until full engine integration is ready
 pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str) -> Result<()> {
-    use crate::strategies::{mean_reversion::MeanReversionStrategy, TradingStrategy, TimeFrame};
+    use crate::strategies::{MeanReversionStrategy, TradingStrategy, TimeFrame};
     // 1. Provider
-    let provider = crate::backtest::providers::CSVHistoricalDataProvider;
+    let provider = crate::backtest::providers::CSVHistoricalDataProvider::new();
     // 2. Build backtester
     let strategies: Vec<Box<dyn TradingStrategy>> = vec![
         Box::new(MeanReversionStrategy::new("UNK/UNK", TimeFrame::OneHour, 20, 2.0, 2.0, 1.0)),
     ];
     let mut bt = Backtester {
+        risk_rules: vec![
+            Box::new(crate::risk::StopLossRule::new(0.05)),
+            Box::new(crate::risk::TakeProfitRule::new(0.10)),
+        ],
         data_provider: Box::new(provider),
         timeframe: timeframe.to_string(),
         starting_balance: 10_000.0,
         strategies,
+        cache: None,
     };
     let report = bt.run(data_path).await?;
     report.print();

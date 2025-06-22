@@ -19,6 +19,8 @@ pub mod utils;
 pub mod trading;
 pub mod engine;
 pub mod backtest;
+pub mod meta;
+pub mod risk;
 
 pub mod dashboard;
 pub mod market_data;
@@ -36,6 +38,7 @@ use crate::trading::{Signal as StratSignal, SignalType};
 use tokio::sync::mpsc;
 use solana_sdk::signature::Keypair;
 use crate::analysis::wallet_analyzer::WalletAnalyzer;
+use crate::risk::{RiskRule, RiskAction};
 use crate::market_data::ws::{self as market_ws, PriceCache};
 use tokio::task::JoinHandle;
 use std::sync::Arc;
@@ -91,6 +94,8 @@ pub struct TradingEngine {
     pub wallet_analyzer: Option<WalletAnalyzer>,
     // Portfolio tracking
     pub portfolio: crate::portfolio::Portfolio,
+    // Risk management rules
+    pub risk_rules: Vec<Box<dyn crate::risk::RiskRule>>,
     // --- EXECUTION PARAMETERS ---
     pub slippage_bps: u16,
     pub max_fee_lamports: u64,
@@ -172,6 +177,10 @@ impl TradingEngine {
         let price_feed_handle = market_ws::spawn_price_feed(&price_pairs, price_cache.clone());
         let starting_cash = config.trading.starting_balance_usd;
         let portfolio = crate::portfolio::Portfolio::new(starting_cash);
+        let risk_rules: Vec<Box<dyn crate::risk::RiskRule>> = vec![
+            Box::new(crate::risk::StopLossRule::new(0.05)),
+            Box::new(crate::risk::TakeProfitRule::new(0.10)),
+        ];
         let pending_orders: Arc<tokio::sync::Mutex<Vec<crate::utils::types::PendingOrder>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let (retry_tx, retry_rx) = tokio::sync::mpsc::unbounded_channel::<crate::utils::types::PendingOrder>();
         // Start dashboard server if feature enabled
@@ -265,6 +274,7 @@ impl TradingEngine {
             wallet_index: 0,
             paper_trading,
             enable_arbitrage: false,
+            risk_rules,
         }
     }
 
@@ -479,10 +489,32 @@ impl TradingEngine {
         // Update daily loss (USD cash for now)
         self.daily_loss = (self.starting_balance - self.current_balance).max(0.0);
 
+        // Evaluate risk after trade
+        self.evaluate_risk_rules();
+
         pnl
     }
 
-
+    /// Evaluate risk rules
+    pub fn evaluate_risk_rules(&mut self) {
+        let cache_guard = self.price_cache.try_read();
+        if cache_guard.is_err() { return; }
+        let cache = cache_guard.unwrap();
+        let positions_snapshot = self.portfolio.positions.clone();
+        for (sym, pos) in positions_snapshot {
+            if pos.size <= 0.0 { continue; }
+            if let Some(pair) = TradingPair::from_str(&sym) {
+                if let Some(price) = cache.get(&pair) {
+                    for rule in &self.risk_rules {
+                        if let Some(RiskAction::ClosePosition) = rule.evaluate(&sym, &pos, *price) {
+                            let _ = self.portfolio.update_on_sell(&sym, pos.size, *price);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     /// Return total equity in USD (cash + unrealized)
     pub fn equity_usd(&self) -> f64 {
