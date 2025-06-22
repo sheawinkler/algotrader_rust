@@ -85,7 +85,7 @@ impl super::DexClient for RaydiumClient {
         limit_price: Option<f64>,
         _stop_price: Option<f64>,
         _take_profit_price: Option<f64>,
-        signer: &str,
+        _wallet: &crate::wallet::Wallet,
     ) -> Result<String> {
         // Handle order types
         match order_type {
@@ -125,7 +125,7 @@ impl super::DexClient for RaydiumClient {
         }
 
         // TODO: Implement actual trade execution logic here. Placeholder for now.
-        let _ = (amount, is_buy, slippage_bps, max_fee_lamports, signer); // suppress unused warnings
+        let _ = (amount, is_buy, slippage_bps, max_fee_lamports, _wallet); // suppress unused warnings
         Ok("tx_signature_placeholder".to_string())
     }
     

@@ -105,7 +105,8 @@ pub struct TradingEngine {
     pub split_chunk_sol: f64,
     pub split_delay_ms: u64,
     // Wallet rotation
-    pub wallet_pool: Vec<String>,
+    /// Optional pool of additional wallets for rotation
+    pub wallet_pool: Vec<crate::wallet::Wallet>,
     wallet_index: usize,
     
     // --- RISK PARAMETERS ---
@@ -149,7 +150,8 @@ impl TradingEngine {
     /// Construct engine from configuration
     pub fn with_config(config: crate::config::Config, paper_trading: bool) -> Self {
         use solana_client::nonblocking::rpc_client::RpcClient;
-        use solana_sdk::signature::Signer;
+        use solana_sdk::signature::{Signer, Keypair};
+        use bs58;
         // Build strategies first
         // Extract execution parameters before moving config
         let slippage_bps = config.trading.slippage_bps;
@@ -157,7 +159,22 @@ impl TradingEngine {
         let split_threshold_sol = config.trading.split_threshold_sol;
         let split_chunk_sol = config.trading.split_chunk_sol;
         let split_delay_ms = config.trading.split_delay_ms;
-        let wallet_pool = config.wallet.wallets.clone();
+                // Build wallet rotation pool
+        let mut wallet_pool: Vec<Wallet> = Vec::new();
+        if !paper_trading {
+            // instantiate new RpcClient for each wallet below
+            for secret in &config.wallet.wallets {
+                if let Ok(bytes) = bs58::decode(secret.trim()).into_vec() {
+                    if let Ok(kp) = Keypair::from_bytes(&bytes) {
+                        wallet_pool.push(Wallet::new(RpcClient::new(config.solana.rpc_url.clone()), kp));
+                    } else {
+                        log::warn!("Failed to parse keypair bytes in wallet pool");
+                    }
+                } else {
+                    log::warn!("Failed to decode base58 private key in wallet pool");
+                }
+            }
+        }
         let mut strategies_vec: Vec<Box<dyn crate::strategies::TradingStrategy>> = Vec::new();
         for scfg in &config.trading.strategies {
             if scfg.enabled {
@@ -303,13 +320,14 @@ impl TradingEngine {
     }
 
     /// Rotate to next wallet in the configured pool. Returns Some(wallet) or None if pool empty.
-    pub fn next_wallet(&mut self) -> Option<String> {
+    /// Rotate to next wallet in the pool (round-robin) and return a reference.
+    pub fn next_wallet(&mut self) -> Option<crate::wallet::Wallet> {
         if self.wallet_pool.is_empty() {
             return None;
         }
-        let w = self.wallet_pool[self.wallet_index % self.wallet_pool.len()].clone();
+                let idx = self.wallet_index % self.wallet_pool.len();
         self.wallet_index = (self.wallet_index + 1) % self.wallet_pool.len();
-        Some(w)
+        Some(self.wallet_pool[idx].clone())
     }
 
     /// Start the trading engine with market data orchestrator
@@ -716,7 +734,7 @@ impl TradingEngine {
         let mut executed = false;
         for dex_name in preferred.iter() {
             if let Some(dex) = self.dex_clients.get(dex_name) {
-                match dex.execute_trade(&po.pair.base, &po.pair.quote, po.amount, po.is_buy, self.slippage_bps, self.max_fee_lamports, new_order_type, po.limit_price, None, None, &po.wallet).await {
+                match dex.execute_trade(&po.pair.base, &po.pair.quote, po.amount, po.is_buy, self.slippage_bps, self.max_fee_lamports, new_order_type, po.limit_price, None, None, self.wallet.as_ref().expect("wallet not available")).await {
                     Ok(_) => { executed = true; break; },
                     Err(e) => { log::warn!("Retry {} failed: {}", dex_name, e); continue; }
                 }
@@ -759,7 +777,10 @@ impl TradingEngine {
             }
             // Attempt trade on available DEX clients in preferred order
             // Determine signer wallet using rotation (falls back to trading_wallet)
-            let wallet = self.next_wallet().unwrap_or_else(|| self.trading_wallet.clone());
+            let wallet_ref = self.next_wallet().unwrap_or_else(|| {
+                self.wallet.clone().expect("wallet not available for live trading")
+            });
+
             let mut total_pnl_chunked = 0.0;
             for &chunk in trade_chunks.iter() {
             if !self.paper_trading {
@@ -769,22 +790,19 @@ impl TradingEngine {
                 for dex_name in preferred.iter() {
                     if let Some(dex) = self.dex_clients.get(*dex_name) {
                         match dex.execute_trade(
-                                &sig.pair.base,
-                                &sig.pair.quote,
-                                chunk,
-                                matches!(sig.action, crate::utils::types::SignalAction::Buy),
-                                self.slippage_bps,
+                                 &sig.pair.base,
+                                 &sig.pair.quote,
+                                 chunk,
+                                 matches!(sig.action, crate::utils::types::SignalAction::Buy),
+                                 self.slippage_bps,
                                  self.max_fee_lamports,
                                  sig.order_type,
                                  sig.limit_price,
                                  sig.stop_price,
                                  None,
-                                 &wallet,
+                                 &wallet_ref,
                              ).await {
-                                 Ok(_) => {
-                                     executed = true;
-                                     break;
-                                 }
+                                 Ok(_) => { executed = true; break; },
                                  Err(e) => {
                                      log::warn!("{} execution failed: {}", dex_name, e);
                                      last_err = Some(e.into());
@@ -804,7 +822,7 @@ impl TradingEngine {
                                     order_type: sig.order_type,
                                     limit_price: sig.limit_price,
                                     stop_price: None,
-                                    wallet: wallet.clone(),
+                                    wallet: wallet_ref.pubkey().to_string(),
                                     dex_preference: preferred.iter().map(|s| s.to_string()).collect(),
                                     timestamp: sig.timestamp,
                                 };

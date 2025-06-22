@@ -82,5 +82,17 @@ impl Wallet {
         let sig = self.rpc.send_and_confirm_transaction(&tx).await?;
         Ok(sig)
     }
+
+    /// Sign and send a base64-encoded VersionedTransaction produced by Jupiter swap API
+    pub async fn sign_and_send_serialized_tx(&self, tx_b64: &str) -> Result<solana_sdk::signature::Signature> {
+        use solana_sdk::transaction::VersionedTransaction;
+        use solana_sdk::signer::signers::Signers;
+        let tx_bytes = base64::decode(tx_b64.trim())?;
+        let vtx: VersionedTransaction = bincode::deserialize(&tx_bytes)?;
+        // Create a freshly signed copy using our keypair
+        let signed_tx = VersionedTransaction::try_new(vtx.message.clone(), &[self.keypair.as_ref()])?;
+        let sig = self.rpc.send_and_confirm_transaction(&signed_tx).await?;
+        Ok(sig)
+    }
 }
 

@@ -80,6 +80,13 @@ impl From<String> for Error {
     }
 }
 
+// Allow automatic conversion from anyhow::Error to our Error type
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Other(err.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -33,7 +33,7 @@ pub trait DexClient: Send + Sync {
         limit_price: Option<f64>,
         stop_price: Option<f64>,
         take_profit_price: Option<f64>,
-        signer: &str,
+        wallet: &crate::wallet::Wallet,
     ) -> crate::Result<String>; // Returns transaction hash
     
     /// Get the current balance of a token

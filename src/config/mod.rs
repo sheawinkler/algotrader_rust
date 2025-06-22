@@ -6,7 +6,8 @@ use crate::utils::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::env;
-use aes_gcm::{Aead, KeyInit, Aes256Gcm, Nonce};
+use aes_gcm::{KeyInit, Aes256Gcm, Nonce};
+use aes_gcm::aead::Aead;
 use sha2::{Digest, Sha256};
 use solana_sdk::signature::Keypair;
 
@@ -389,6 +390,26 @@ impl Config {
     }
     
     
+    /// Decrypt an AES-256-GCM encrypted keypair file. The file format is assumed to be:
+    /// [12 bytes nonce][ciphertext...]. The key is derived as SHA-256(passphrase).
+    pub fn decrypt_keyfile<P: AsRef<std::path::Path>>(path: P, passphrase: &str) -> Result<Vec<u8>> {
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::aead::Aead;
+        use sha2::{Sha256, Digest};
+        use std::fs;
+
+        let data = fs::read(path)?;
+        if data.len() < 13 {
+            return Err(Error::WalletError("Encrypted keyfile too short".into()));
+        }
+        let (nonce_bytes, cipher_bytes) = data.split_at(12);
+        let key = Sha256::digest(passphrase.as_bytes());
+        let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| Error::WalletError(format!("AES init error: {e}")))?;
+        let nonce = Nonce::from_slice(nonce_bytes);
+        let plaintext = cipher.decrypt(nonce, cipher_bytes.as_ref()).map_err(|e| Error::WalletError(format!("Decrypt error: {e}")))?;
+        Ok(plaintext)
+    }
+
     pub fn load_keypair(&self) -> Result<Keypair> {
         // Try to load from private key first
         if let Some(ref private_key) = self.wallet.private_key {
