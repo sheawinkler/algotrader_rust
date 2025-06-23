@@ -10,12 +10,12 @@ use ta::{
     },
     Next, DataItem,
 };
-use crate::indicators::StochasticOscillator;
+use crate::utils::indicators::{StochasticOscillator, IndicatorValue, CachedIndicator};
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
 use crate::utils::types::MarketRegime;
-use crate::utils::indicator_ext::{IndicatorValue, CachedIndicator};
+
 use super::{TradingStrategy, TimeFrame};
 
 /// Advanced trading strategy that combines multiple indicators and adapts to market conditions

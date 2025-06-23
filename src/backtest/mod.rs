@@ -2,6 +2,13 @@
 
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize}; // SimulatedTrade and BacktestReport
+use clap::ValueEnum;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SimMode {
+    Bar,
+    Tick,
+}
 
 // Backtester struct with portfolio simulation and basic reporting
 /// Result of a single simulated trade
@@ -134,12 +141,25 @@ impl BacktestReport {
 }
 
 pub struct Backtester {
+    /// Historical data provider implementation
     pub data_provider: Box<dyn HistoricalDataProvider>,
+    /// Candle timeframe label (e.g. "1h")
     pub timeframe: String,
+    /// Starting quote balance (e.g. USD)
     pub starting_balance: f64,
-    pub strategies: Vec<Box<dyn crate::strategies::TradingStrategy>>, // strategies to evaluate
+    /// Strategies to evaluate during the run
+    pub strategies: Vec<Box<dyn crate::strategies::TradingStrategy>>,
+    /// Optional cache for storing/retrieving back-test reports
     pub cache: Option<crate::backtest::cache::BacktestCache>,
+    /// Risk rules (stop-loss, take-profit, etc.)
     pub risk_rules: Vec<Box<dyn crate::risk::RiskRule>>,
+    /// Simulation mode (bar vs tick)
+    pub sim_mode: SimMode,
+    /// Per-trade slippage expressed in basis points (100 bps = 1 %)
+    pub slippage_bps: u16,
+    /// Trading fee expressed in basis points (paid on notional)
+    pub fee_bps: u16,
+
 }
 
 impl Backtester {
@@ -166,9 +186,16 @@ impl Backtester {
             return Err(crate::Error::DataError("No market data loaded".to_string()));
         }
 
-        // Prepare portfolio
+        // Prepare portfolio and event queue
         let mut portfolio = Portfolio::new(self.starting_balance);
         let mut prices: HashMap<String, f64> = HashMap::new();
+        let mut queue = crate::backtest::event::EventQueue::new();
+        use crate::backtest::event::BacktestEvent;
+
+        // prime queue with historical market data
+        for dp in market_data {
+            queue.push(BacktestEvent::Market(dp));
+        }
 
         // metrics
         let mut total_trades = 0usize;
@@ -177,61 +204,96 @@ impl Backtester {
         let mut max_drawdown = 0.0;
         let mut equity_curve: Vec<f64> = Vec::new();
 
-        for data_point in &market_data {
-            // update last price map
-            prices.insert(data_point.pair.to_string(), data_point.last_price);
+        while let Some(evt) = queue.pop() {
+            match evt {
+                BacktestEvent::Market(data_point) => {
+                    // update last price
+                    prices.insert(data_point.pair.to_string(), data_point.last_price);
 
-            // run strategies
-            for strategy in &mut self.strategies {
-                let signals = strategy.generate_signals(data_point).await;
-                for sig in signals {
-                    let qty = sig.size;
-                    let price = sig.price;
-                    let pnl = 0.0; // placeholder for now
-
-                    use crate::trading::SignalType;
-                    let side = match sig.signal_type {
-                        SignalType::Buy => crate::utils::types::OrderSide::Buy,
-                        SignalType::Sell => crate::utils::types::OrderSide::Sell,
-                        _ => continue, // skip signals that are not actionable trades
-                    };
-
-                    let trade = SimulatedTrade {
-                        timestamp: sig.timestamp,
-                        symbol: sig.symbol.clone(),
-                        side,
-                        qty,
-                        price,
-                        pnl,
-                    };
-                    portfolio.apply_trade(&trade);
-                    total_trades += 1;
-                    if pnl > 0.0 {
-                        winning_trades += 1;
+                    // generate signals
+                    for strategy in &mut self.strategies {
+                        let signals = futures::executor::block_on(strategy.generate_signals(&data_point));
+                        for sig in signals {
+                            // convert to trade later via slippage/fee; push Trade event
+                            let qty = sig.size;
+                            let raw_price = sig.price;
+                            let exec_price = match sig.signal_type {
+                                crate::trading::SignalType::Buy => raw_price * (1.0 + (self.slippage_bps as f64) / 10_000.0),
+                                crate::trading::SignalType::Sell => raw_price * (1.0 - (self.slippage_bps as f64) / 10_000.0),
+                                _ => raw_price,
+                            };
+                            use crate::trading::SignalType;
+                            let side = match sig.signal_type {
+                                SignalType::Buy => crate::utils::types::OrderSide::Buy,
+                                SignalType::Sell => crate::utils::types::OrderSide::Sell,
+                                _ => continue,
+                            };
+                            let trade_evt = BacktestEvent::Trade(SimulatedTrade {
+                                timestamp: sig.timestamp,
+                                symbol: sig.symbol.clone(),
+                                side,
+                                qty,
+                                price: exec_price,
+                                pnl: 0.0,
+                            });
+                            queue.push(trade_evt);
+                        }
                     }
+
+                    // ---------- Risk rule evaluation ----------
+                    let positions_snapshot: std::collections::HashMap<String, crate::portfolio::Position> = portfolio.positions.clone();
+                    for (sym, pos) in positions_snapshot {
+                        if pos.size <= 0.0 { continue; }
+                        if let Some(price) = prices.get(&sym) {
+                            for rule in &self.risk_rules {
+                                if let Some(RiskAction::ClosePosition) = rule.evaluate(&sym, &pos, *price) {
+                                    // push a trade event to close the position
+                                    let close_evt = BacktestEvent::Trade(SimulatedTrade {
+                                        timestamp: data_point.timestamp,
+                                        symbol: sym.clone(),
+                                        side: crate::utils::types::OrderSide::Sell,
+                                        qty: pos.size,
+                                        price: *price,
+                                        pnl: 0.0,
+                                    });
+                                    queue.push(close_evt);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // update equity/drawdown after processing bar
+                    let equity = portfolio.equity(&prices);
+                    if equity > peak_equity { peak_equity = equity; }
+                    let drawdown = (peak_equity - equity) / peak_equity;
+                    if drawdown > max_drawdown { max_drawdown = drawdown; }
+                    equity_curve.push(equity);
+                }
+                BacktestEvent::Trade(mut trade) => {
+                    let notional = trade.qty * trade.price;
+                    let fee = notional * (self.fee_bps as f64) / 10_000.0;
+                    let before_pnl = portfolio.realized_pnl;
+                    portfolio.apply_trade(&trade);
+                    portfolio.cash -= fee;
+                    let realized = portfolio.realized_pnl - before_pnl;
+                    trade.pnl = realized;
+                    if realized > 0.0 { winning_trades += 1; }
+                    total_trades += 1;
                 }
             }
+        }
 
-            // update drawdown
-            let equity = portfolio.equity(&prices);
-            if equity > peak_equity { peak_equity = equity; }
-            let drawdown = (peak_equity - equity) / peak_equity;
-            if drawdown > max_drawdown { max_drawdown = drawdown; }
-            equity_curve.push(equity);
-
-            // ---------- Risk rule evaluation ----------
-            // iterate over a snapshot of open positions to avoid borrow issues
-            let positions_snapshot: std::collections::HashMap<String, crate::portfolio::Position> = portfolio.positions.clone();
-            for (sym, pos) in positions_snapshot {
-                if pos.size <= 0.0 { continue; }
-                if let Some(price) = prices.get(&sym) {
-                    for rule in &self.risk_rules {
-                        if let Some(RiskAction::ClosePosition) = rule.evaluate(&sym, &pos, *price) {
-                            let pnl = portfolio.update_on_sell(&sym, pos.size, *price);
-                            total_trades += 1;
-                            if pnl > 0.0 { winning_trades += 1; }
-                            break; // after close, stop evaluating more rules for this pos
-                        }
+        // ---------- Risk rule evaluation (after full run) ----------
+        for (sym, pos) in portfolio.positions.clone() {
+            if pos.size <= 0.0 { continue; }
+            if let Some(price) = prices.get(&sym) {
+                for rule in &self.risk_rules {
+                    if let Some(RiskAction::ClosePosition) = rule.evaluate(&sym, &pos, *price) {
+                        let pnl = portfolio.update_on_sell(&sym, pos.size, *price);
+                        total_trades += 1;
+                        if pnl > 0.0 { winning_trades += 1; }
+                        break;
                     }
                 }
             }
@@ -290,17 +352,19 @@ impl Clone for Box<dyn HistoricalDataProvider> {
     }
 }
 
-
-
-
 pub mod providers;
+pub mod tick_provider;
+pub mod event;
 pub mod cache;
 
 /// Convenience helper used by CLI until full engine integration is ready
-pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str, output: Option<&std::path::Path>) -> Result<()> {
+pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str, sim_mode: SimMode, output: Option<&std::path::Path>) -> Result<()> {
     use crate::strategies::{MeanReversionStrategy, TradingStrategy, TimeFrame};
     // 1. Provider
-    let provider = crate::backtest::providers::CSVHistoricalDataProvider::new();
+    let provider: Box<dyn HistoricalDataProvider> = match sim_mode {
+        SimMode::Bar => Box::new(crate::backtest::providers::CSVHistoricalDataProvider::new()),
+        SimMode::Tick => Box::new(crate::backtest::tick_provider::CSVTicksProvider::new()),
+    };
     // 2. Build backtester
     let strategies: Vec<Box<dyn TradingStrategy>> = vec![
         Box::new(MeanReversionStrategy::new("UNK/UNK", TimeFrame::OneHour, 20, 2.0, 2.0, 1.0)),
@@ -310,11 +374,14 @@ pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str, output: Optio
             Box::new(crate::risk::StopLossRule::new(0.05)),
             Box::new(crate::risk::TakeProfitRule::new(0.10)),
         ],
-        data_provider: Box::new(provider),
+        data_provider: provider,
         timeframe: timeframe.to_string(),
         starting_balance: 10_000.0,
         strategies,
         cache: None,
+        sim_mode,
+        slippage_bps: 0,
+        fee_bps: 8,      // 0.03 %
     };
     let rpt = bt.run(data_path).await?;
     if let Some(path) = output {

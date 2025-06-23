@@ -8,7 +8,7 @@ use ta::{
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
-use crate::utils::indicator_ext::{IndicatorValue, CachedIndicator};
+use crate::utils::indicators::{IndicatorValue, CachedIndicator};
 use super::{TradingStrategy, TimeFrame};
 
 /// Mean Reversion Strategy that identifies overbought/oversold conditions

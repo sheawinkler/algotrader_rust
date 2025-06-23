@@ -6,7 +6,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::backtest::{cache::BacktestCache, providers::CSVHistoricalDataProvider, Backtester};
+use crate::backtest::{cache::BacktestCache, providers::CSVHistoricalDataProvider, Backtester, SimMode};
 use crate::strategies::TradingStrategyClone;
 
 use crate::strategies::{registry::default_strategies, TradingStrategy};
@@ -52,7 +52,10 @@ impl MetaStrategyEngine {
                 starting_balance: self.starting_balance,
                 strategies: vec![cloned as Box<dyn TradingStrategy>],
                 cache: Some(self.cache.clone()),
-                 risk_rules: vec![
+                sim_mode: SimMode::Bar,
+                slippage_bps: 5,
+                fee_bps: 3,
+                risk_rules: vec![
                      Box::new(crate::risk::StopLossRule::new(0.05)),
                      Box::new(crate::risk::TakeProfitRule::new(0.10)),
                  ],

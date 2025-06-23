@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use ta::indicators::{ExponentialMovingAverage, RelativeStrengthIndex};
-use crate::utils::indicator_ext::CachedIndicator;
+use crate::utils::indicators::CachedIndicator;
 use ta::Next;
 
 use crate::trading::{MarketData, Signal, SignalType, OrderSide, OrderType};

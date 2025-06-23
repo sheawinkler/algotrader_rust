@@ -8,11 +8,11 @@ use ta::{
     },
     Next,
 };
-use crate::indicators::AverageDirectionalIndex;
+use crate::utils::indicators::AverageDirectionalIndex;
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
-use crate::utils::indicator_ext::{IndicatorValue, CachedIndicator};
+use crate::utils::indicators::{IndicatorValue, CachedIndicator};
 use super::{TradingStrategy, TimeFrame};
 
 /// Trend Following Strategy that identifies and rides market trends
