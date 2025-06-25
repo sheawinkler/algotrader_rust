@@ -242,11 +242,12 @@ impl TradingStrategy for MeanReversionStrategy {
 #[cfg(all(test, feature = "strategy_tests"))]
 mod tests {
     use super::*;
-    use std::time::{Duration, SystemTime};
+    use std::time::Duration;
+use chrono::Utc;
 
     fn create_test_market_data(price: f64) -> MarketData {
         MarketData {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now().timestamp(),
             open: price,
             high: price * 1.01,
             low: price * 0.99,
@@ -292,7 +293,7 @@ mod tests {
             size: 0.0,
             price,
             order_type: OrderType::Market,
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now().timestamp(),
         });
 
         // Generate more data with price moving up

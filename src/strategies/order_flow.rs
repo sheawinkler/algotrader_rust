@@ -1,13 +1,10 @@
 use std::collections::{HashMap, VecDeque};
-use std::time::SystemTime;
+use chrono::{Utc, DateTime};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::{TimeFrame, TradingStrategy};
-use crate::trading::{
-    MarketData, Order, OrderBook, OrderSide, OrderType, Position, Signal, SignalType,
-};
 
 /// Order Flow Strategy that analyzes market depth and order flow
 #[derive(Debug, Clone)]
@@ -39,7 +36,7 @@ pub struct OrderFlowStrategy {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TradeRecord {
-    timestamp: SystemTime,
+    timestamp: i64,
     price: f64,
     size: f64,
     side: OrderSide,
@@ -244,7 +241,7 @@ impl TradingStrategy for OrderFlowStrategy {
 
     fn on_order_filled(&mut self, order: &Order) {
         let trade_record = TradeRecord {
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now().timestamp(),
             price: order.price,
             size: order.size,
             side: order.side,
@@ -309,7 +306,7 @@ impl TradingStrategy for OrderFlowStrategy {
 #[cfg(all(test, feature = "strategy_tests"))]
 mod tests {
     use super::*;
-    use std::time::SystemTime;
+    use chrono::Utc;
 
     fn create_test_order_book(
         bid_price: f64, ask_price: f64, bid_size: f64, ask_size: f64,
@@ -335,7 +332,7 @@ mod tests {
         // Create test market data with order book
         let mut market_data = MarketData {
             pair: TradingPair::new("SOL", "USDC"),
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now().timestamp(),
             open: Some(100.0),
             high: Some(101.0),
             low: Some(99.5),
@@ -366,7 +363,7 @@ mod tests {
             size: 0.0,
             price: 100.5,
             order_type: OrderType::Market,
-            timestamp: SystemTime::now(),
+            timestamp: Utc::now().timestamp(),
         });
 
         // Should have an open position
