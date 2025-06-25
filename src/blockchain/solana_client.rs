@@ -2,10 +2,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use solana_client::{
-    nonblocking::rpc_client::RpcClient as AsyncRpcClient,
-    rpc_config::RpcProgramAccountsConfig,
+    nonblocking::rpc_client::RpcClient as AsyncRpcClient, rpc_config::RpcProgramAccountsConfig,
     rpc_filter::RpcFilterType,
 };
 use solana_sdk::{
@@ -53,15 +52,10 @@ pub struct SolanaClient {
 
 impl SolanaClient {
     /// Create a new Solana client
-    pub fn new(
-        config: SolanaClientConfig,
-        keypair: Keypair,
-    ) -> Result<Self> {
+    pub fn new(config: SolanaClientConfig, keypair: Keypair) -> Result<Self> {
         let client = AsyncRpcClient::new_with_commitment(
             config.rpc_url.clone(),
-            CommitmentConfig {
-                commitment: config.commitment,
-            },
+            CommitmentConfig { commitment: config.commitment },
         );
 
         Ok(Self {
@@ -88,26 +82,18 @@ impl SolanaClient {
     }
 
     /// Get the token accounts for a wallet
-    pub async fn get_token_accounts(
-        &self,
-        wallet: &str,
-    ) -> Result<Vec<(Pubkey, TokenAccount)>> {
-        let wallet_pubkey = Pubkey::from_str(wallet)
-            .map_err(|e| anyhow!("Invalid wallet address: {}", e))?;
+    pub async fn get_token_accounts(&self, wallet: &str) -> Result<Vec<(Pubkey, TokenAccount)>> {
+        let wallet_pubkey =
+            Pubkey::from_str(wallet).map_err(|e| anyhow!("Invalid wallet address: {}", e))?;
 
         // Get all token accounts for the wallet
         let filters = vec![RpcFilterType::DataSize(spl_token::state::Account::LEN as u64)];
-        
-        let config = RpcProgramAccountsConfig {
-            filters: Some(filters),
-            ..Default::default()
-        };
 
-        let token_accounts = self.client
-            .get_program_accounts_with_config(
-                &spl_token::id(),
-                config,
-            )
+        let config = RpcProgramAccountsConfig { filters: Some(filters), ..Default::default() };
+
+        let token_accounts = self
+            .client
+            .get_program_accounts_with_config(&spl_token::id(), config)
             .await
             .map_err(|e| anyhow!("Failed to get token accounts: {}", e))?;
 
@@ -125,10 +111,11 @@ impl SolanaClient {
 
     /// Get the wallet balance in SOL
     pub async fn get_sol_balance(&self, wallet: &str) -> Result<f64> {
-        let pubkey = Pubkey::from_str(wallet)
-            .map_err(|e| anyhow!("Invalid wallet address: {}", e))?;
+        let pubkey =
+            Pubkey::from_str(wallet).map_err(|e| anyhow!("Invalid wallet address: {}", e))?;
 
-        let balance = self.client
+        let balance = self
+            .client
             .get_balance(&pubkey)
             .await
             .map_err(|e| anyhow!("Failed to get SOL balance: {}", e))?;
@@ -175,13 +162,13 @@ impl SolanaClient {
     async fn analyze_wallet(&self, _wallet: &str) -> Result<WalletAnalysis> {
         let _token_accounts = self.get_token_accounts(_wallet).await?;
         let _sol_balance = self.get_sol_balance(_wallet).await?;
-        
+
         // Get SOL balance
         let sol_balance = self.get_sol_balance(_wallet).await?;
-        
+
         // TODO: Analyze transaction history
         // TODO: Calculate trading metrics
-        
+
         Ok(WalletAnalysis {
             address: _wallet.to_string(),
             total_trades: 0,
@@ -203,20 +190,14 @@ impl SolanaClient {
 
     /// Get recent transactions for a wallet
     async fn get_recent_transactions(
-        &self,
-        _wallet: &str,
-        _limit: usize,
+        &self, _wallet: &str, _limit: usize,
     ) -> Result<Vec<TransactionInfo>> {
         // TODO: Implement transaction history fetching
         Ok(vec![])
     }
 
     /// Get token holders for a specific token
-    async fn get_token_holders(
-        &self,
-        _mint: &str,
-        _limit: usize,
-    ) -> Result<Vec<TokenHolder>> {
+    async fn get_token_holders(&self, _mint: &str, _limit: usize) -> Result<Vec<TokenHolder>> {
         // TODO: Implement token holder analysis
         Ok(vec![])
     }
@@ -232,11 +213,7 @@ pub struct TokenInfo {
 
 impl TokenInfo {
     pub fn new(symbol: &str, name: &str, decimals: u8) -> Self {
-        Self {
-            symbol: symbol.to_string(),
-            name: name.to_string(),
-            decimals,
-        }
+        Self { symbol: symbol.to_string(), name: name.to_string(), decimals }
     }
 }
 
@@ -282,24 +259,28 @@ mod tests {
         let config = SolanaClientConfig::default();
         let keypair = Keypair::new();
         let client = SolanaClient::new(config, keypair).unwrap();
-        
+
         // Test with a known wallet (e.g., Solana Foundation)
-        let balance = client.get_sol_balance("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg").await;
+        let balance = client
+            .get_sol_balance("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg")
+            .await;
         assert!(balance.is_ok());
-        
+
         // Test with invalid address
         let result = client.get_sol_balance("invalid_address").await;
         assert!(result.is_err());
     }
-    
+
     #[tokio::test]
     async fn test_get_token_accounts() {
         let config = SolanaClientConfig::default();
         let keypair = Keypair::new();
         let client = SolanaClient::new(config, keypair).unwrap();
-        
+
         // Test with a wallet that likely has token accounts
-        let accounts = client.get_token_accounts("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg").await;
+        let accounts = client
+            .get_token_accounts("vines1vzrYbzLMRdu58ou5XTby4qAqVRLmqo36NKPTg")
+            .await;
         assert!(accounts.is_ok());
     }
 }

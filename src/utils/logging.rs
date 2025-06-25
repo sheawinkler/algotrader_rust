@@ -1,9 +1,9 @@
 //! Logging configuration for the trading system.
 
-use env_logger::{Builder, Env, Target};
-use log::{LevelFilter, info};
-use std::io::Write;
 use chrono::Local;
+use env_logger::{Builder, Env, Target};
+use log::{info, LevelFilter};
+use std::io::Write;
 
 /// Initialize the logging system
 pub fn init_logging(level: &str) {
@@ -15,14 +15,14 @@ pub fn init_logging(level: &str) {
         .format(|buf, record| {
             let level = record.level();
             let level_color = match level {
-                log::Level::Error => "\x1b[31m", // Red
-                log::Level::Warn => "\x1b[33m",  // Yellow
-                log::Level::Info => "\x1b[32m",  // Green
-                log::Level::Debug => "\x1b[36m", // Cyan
-                log::Level::Trace => "\x1b[35m", // Magenta
+                | log::Level::Error => "\x1b[31m", // Red
+                | log::Level::Warn => "\x1b[33m",  // Yellow
+                | log::Level::Info => "\x1b[32m",  // Green
+                | log::Level::Debug => "\x1b[36m", // Cyan
+                | log::Level::Trace => "\x1b[35m", // Magenta
             };
             let reset = "\x1b[0m";
-            
+
             writeln!(
                 buf,
                 "{} {}{:5}{} [{}] {}",
@@ -36,7 +36,7 @@ pub fn init_logging(level: &str) {
         })
         .target(Target::Stdout)
         .init();
-        
+
     info!("Logging initialized at level: {}", level);
 }
 
@@ -53,21 +53,21 @@ pub fn init_test_logging() {
 mod tests {
     use super::*;
     use log::{debug, error, info, warn};
-    
+
     #[test]
     fn test_logging() {
         // This is a visual test - run with `cargo test -- --nocapture` to see the output
         init_logging("debug");
-        
+
         error!("This is an error message");
         warn!("This is a warning message");
         info!("This is an info message");
         debug!("This is a debug message");
-        
+
         // This test just verifies that the logging functions don't panic
         assert!(true);
     }
-    
+
     #[test]
     fn test_test_logging() {
         init_test_logging();

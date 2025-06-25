@@ -8,7 +8,9 @@ use std::path::Path;
 /// Generate a default configuration file at the specified path
 pub fn generate_config_template<P: AsRef<Path>>(path: P) -> Result<()> {
     let config = Config::default();
-    config.save(path).map_err(|e| Error::ConfigError(e.to_string()))
+    config
+        .save(path)
+        .map_err(|e| Error::ConfigError(e.to_string()))
 }
 
 /// Generate a configuration file with comments explaining each field
@@ -105,12 +107,11 @@ max_data_points = 10000
 detailed_logging = true
 "#;
 
-    
     // Create parent directories if they don't exist
     if let Some(parent) = path.as_ref().parent() {
         fs::create_dir_all(parent)?;
     }
-    
+
     fs::write(path, toml_str)?;
     Ok(())
 }
@@ -119,25 +120,25 @@ detailed_logging = true
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    
+
     #[test]
     fn test_generate_config_template() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("config.toml");
-        
+
         generate_commented_config_template(&config_path).unwrap();
         assert!(config_path.exists());
-        
+
         let content = fs::read_to_string(&config_path).unwrap();
         assert!(content.contains("AlgoTraderV2 Configuration"));
         assert!(content.contains("rpc_url"));
     }
-    
+
     #[test]
     fn test_generate_config_template_with_nonexistent_dir() {
         let temp_dir = tempdir().unwrap();
         let config_path = temp_dir.path().join("config").join("config.toml");
-        
+
         generate_commented_config_template(&config_path).unwrap();
         assert!(config_path.exists());
     }

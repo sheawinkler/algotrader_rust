@@ -29,7 +29,9 @@ pub trait RiskRule: Send + Sync {
 }
 
 impl Clone for Box<dyn RiskRule> {
-    fn clone(&self) -> Self { self.box_clone() }
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
 }
 
 /// Simple stop-loss rule: close the position if price drops more than `pct` below average entry.
@@ -39,7 +41,9 @@ pub struct StopLossRule {
 }
 
 impl StopLossRule {
-    pub fn new(pct: f64) -> Self { Self { pct } }
+    pub fn new(pct: f64) -> Self {
+        Self { pct }
+    }
 }
 
 impl RiskRule for StopLossRule {
@@ -53,7 +57,9 @@ impl RiskRule for StopLossRule {
         None
     }
 
-    fn box_clone(&self) -> Box<dyn RiskRule> { Box::new(self.clone()) }
+    fn box_clone(&self) -> Box<dyn RiskRule> {
+        Box::new(self.clone())
+    }
 }
 
 /// Simple take-profit rule: close position if price rises more than `pct` above entry.
@@ -63,7 +69,9 @@ pub struct TakeProfitRule {
 }
 
 impl TakeProfitRule {
-    pub fn new(pct: f64) -> Self { Self { pct } }
+    pub fn new(pct: f64) -> Self {
+        Self { pct }
+    }
 }
 
 impl RiskRule for TakeProfitRule {
@@ -77,5 +85,7 @@ impl RiskRule for TakeProfitRule {
         None
     }
 
-    fn box_clone(&self) -> Box<dyn RiskRule> { Box::new(self.clone()) }
+    fn box_clone(&self) -> Box<dyn RiskRule> {
+        Box::new(self.clone())
+    }
 }

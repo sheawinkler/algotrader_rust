@@ -3,7 +3,7 @@
 //! Run automatically by calling `dashboard::run()` from your application.
 
 #[cfg(feature = "dashboard")]
-use axum::{routing::get, Json, Router, response::Html, extract::State};
+use axum::{extract::State, response::Html, routing::get, Json, Router};
 #[cfg(feature = "dashboard")]
 use serde::Serialize;
 #[cfg(feature = "dashboard")]
@@ -33,10 +33,7 @@ struct PortfolioSummary {
 #[cfg(feature = "dashboard")]
 async fn portfolio_handler(State(state): State<SharedSnapshot>) -> Json<PortfolioSummary> {
     let snap = state.read().await;
-    Json(PortfolioSummary {
-        equity_usd: snap.equity_usd,
-        equity_sol: snap.equity_sol,
-    })
+    Json(PortfolioSummary { equity_usd: snap.equity_usd, equity_sol: snap.equity_sol })
 }
 
 #[cfg(feature = "dashboard")]
@@ -49,10 +46,7 @@ struct MetricsSummary {
 #[cfg(feature = "dashboard")]
 async fn metrics_handler(State(state): State<SharedSnapshot>) -> Json<MetricsSummary> {
     let snap = state.read().await;
-    Json(MetricsSummary {
-        pnl_usd: snap.pnl_usd,
-        open_positions: snap.open_positions,
-    })
+    Json(MetricsSummary { pnl_usd: snap.pnl_usd, open_positions: snap.open_positions })
 }
 
 #[cfg(feature = "dashboard")]
@@ -74,8 +68,8 @@ pub async fn run(state: SharedSnapshot) {
     // Try 8080 first; if in use, bind to a random port.
     let primary_addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     let listener = match std::net::TcpListener::bind(primary_addr) {
-        Ok(l) => l,
-        Err(e) => {
+        | Ok(l) => l,
+        | Err(e) => {
             eprintln!("Port 8080 unavailable: {} – binding to random port", e);
             std::net::TcpListener::bind("127.0.0.1:0").expect("failed to bind random port")
         }

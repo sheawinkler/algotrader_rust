@@ -1,7 +1,9 @@
 //! Simple helper that downloads historical OHLCV data via a `RemoteHistoricalDataProvider`
 //! and saves it to a CSV file compatible with the existing CSVHistoricalDataProvider.
 
-use crate::backtest::remote_provider::{CryptoCompareProvider, BirdeyeProvider, RemoteHistoricalDataProvider};
+use crate::backtest::remote_provider::{
+    BirdeyeProvider, CryptoCompareProvider, RemoteHistoricalDataProvider,
+};
 use crate::Result;
 
 /// Download candles for `symbol=BASE/QUOTE` and save to `output_csv`.
@@ -9,24 +11,20 @@ use crate::Result;
 /// * `timeframe` – Accepted values map to CryptoCompare endpoints: "1d", "1h", otherwise minutes.
 /// * `limit` – Number of candles to request (CryptoCompare max 2000).
 pub async fn download_to_csv(
-    base: &str,
-    quote: &str,
-    timeframe: &str,
-    limit: usize,
-    output_csv: &std::path::Path,
+    base: &str, quote: &str, timeframe: &str, limit: usize, output_csv: &std::path::Path,
 ) -> Result<()> {
     // Try Birdeye first if API key present, fallback to CryptoCompare
     let mut candles = Vec::new();
     if std::env::var("BIRDEYE_API_KEY").is_ok() {
         let birdeye = BirdeyeProvider::new();
         match birdeye.fetch(base, quote, timeframe, limit).await {
-            Ok(c) if !c.is_empty() => {
+            | Ok(c) if !c.is_empty() => {
                 candles = c;
-            },
-            Err(e) => {
+            }
+            | Err(e) => {
                 log::warn!("Birdeye fetch failed: {} – falling back to CryptoCompare", e);
-            },
-            _ => {},
+            }
+            | _ => {}
         }
     }
     if candles.is_empty() {

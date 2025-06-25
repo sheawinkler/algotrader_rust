@@ -1,11 +1,11 @@
+use super::HistoricalDataProvider;
+use crate::backtest::cache;
 use crate::utils::types::{MarketData, TradingPair};
 use crate::Result;
-use super::HistoricalDataProvider;
 use csv::ReaderBuilder;
-use crate::backtest::cache;
+use serde::Deserialize;
 use std::fs;
 use std::io::Cursor;
-use serde::Deserialize;
 use std::path::PathBuf;
 
 /// CSV schema for tick data: timestamp,price,qty
@@ -20,7 +20,9 @@ struct TickRow {
 pub struct CSVTicksProvider;
 
 impl CSVTicksProvider {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 impl HistoricalDataProvider for CSVTicksProvider {
@@ -28,9 +30,17 @@ impl HistoricalDataProvider for CSVTicksProvider {
         let no_cache = std::env::var("BACKTEST_NO_CACHE").is_ok();
         let key = cache::build_key(&["tickcsv", data_file.to_string_lossy().as_ref()]);
         let raw_bytes = if !no_cache {
-            if let Some(b) = cache::get_raw(&key)? { b } else { fs::read(data_file)? }
-        } else { fs::read(data_file)? };
-        if !no_cache { cache::put_raw(&key, &raw_bytes).ok(); }
+            if let Some(b) = cache::get_raw(&key)? {
+                b
+            } else {
+                fs::read(data_file)?
+            }
+        } else {
+            fs::read(data_file)?
+        };
+        if !no_cache {
+            cache::put_raw(&key, &raw_bytes).ok();
+        }
         let mut rdr = ReaderBuilder::new()
             .has_headers(true)
             .from_reader(Cursor::new(raw_bytes));

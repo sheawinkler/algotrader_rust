@@ -4,9 +4,9 @@
 //! Strategies should call [`update`] whenever they compute a fresh ATR value.
 //! The `VolatilitySizer` reads the most‐recent ATR via [`get`].
 
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::RwLock;
-use once_cell::sync::Lazy;
 
 static ATR_CACHE: Lazy<RwLock<HashMap<String, f64>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 

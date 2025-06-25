@@ -28,5 +28,7 @@ pub fn init() -> Result<(), Box<dyn Error + Send + Sync>> {
 
 /// Return the global Prometheus handle. Panics if `init` has not been called.
 pub fn handle() -> &'static PrometheusHandle {
-    PROM_HANDLE.get().expect("metrics::init() must be called first")
+    PROM_HANDLE
+        .get()
+        .expect("metrics::init() must be called first")
 }

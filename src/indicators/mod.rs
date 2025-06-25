@@ -2,9 +2,9 @@
 //! Only the functionality needed by our strategies is implemented – enough to compile
 //! and run basic back-tests without pulling another external dependency.
 
-use ta::{Next, High, Low, Close, Period, Reset};
-use ta::indicators::{SlowStochastic, ExponentialMovingAverage};
 use anyhow::Result;
+use ta::indicators::{ExponentialMovingAverage, SlowStochastic};
+use ta::{Close, High, Low, Next, Period, Reset};
 
 /// Output of the stochastic oscillator that the legacy code expects.
 #[derive(Debug, Clone, Copy)]
@@ -62,7 +62,6 @@ impl<T: High + Low + Close> Next<&T> for StochasticOscillator {
 
 // Re-export so existing `use crate::indicators::*` patterns work.
 
-
 /// Extremely-minimal Average Directional Index stub.
 /// Only returns 0.0; enough for compilation until we decide to implement properly.
 #[derive(Debug, Clone)]
@@ -75,11 +74,15 @@ impl AverageDirectionalIndex {
         Ok(Self { _period: period })
     }
 
-    pub fn current(&self) -> f64 { 0.0 }
+    pub fn current(&self) -> f64 {
+        0.0
+    }
 }
 
 impl Period for AverageDirectionalIndex {
-    fn period(&self) -> usize { self._period }
+    fn period(&self) -> usize {
+        self._period
+    }
 }
 
 impl Reset for AverageDirectionalIndex {
@@ -88,10 +91,14 @@ impl Reset for AverageDirectionalIndex {
 
 impl Next<f64> for AverageDirectionalIndex {
     type Output = f64;
-    fn next(&mut self, _input: f64) -> f64 { 0.0 }
+    fn next(&mut self, _input: f64) -> f64 {
+        0.0
+    }
 }
 
 impl<'a, T: High + Low + Close> Next<&'a T> for AverageDirectionalIndex {
     type Output = f64;
-    fn next(&mut self, _input: &'a T) -> f64 { 0.0 }
+    fn next(&mut self, _input: &'a T) -> f64 {
+        0.0
+    }
 }

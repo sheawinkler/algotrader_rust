@@ -1,9 +1,9 @@
 //! Performance monitoring and optimization for trading strategies
 
+mod analyzer;
 mod metrics;
 mod monitor;
-mod analyzer;
 
+pub use analyzer::*;
 pub use metrics::*;
 pub use monitor::*;
-pub use analyzer::*;

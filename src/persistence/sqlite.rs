@@ -1,13 +1,13 @@
 //! SQLite persistence backend using `rusqlite`.
 //! This is deliberately lightweight – SeaORM can be layered on later.
 
+use async_trait::async_trait;
+use chrono::{NaiveDateTime, TimeZone, Utc};
+use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use rusqlite::{Connection, params};
-use chrono::{NaiveDateTime, TimeZone, Utc};
-use async_trait::async_trait;
 
-use super::{Persistence, TradeRecord, EquitySnapshot, BacktestSummary};
+use super::{BacktestSummary, EquitySnapshot, Persistence, TradeRecord};
 
 /// Thread-safe SQLite wrapper shared across async tasks.
 #[derive(Clone)]
@@ -57,7 +57,8 @@ fn init_schema(conn: &Connection) -> anyhow::Result<()> {
              sharpe        REAL NOT NULL,
              max_drawdown  REAL NOT NULL,
              created_at    INTEGER NOT NULL
-         );" )?;
+         );",
+    )?;
     Ok(())
 }
 
@@ -87,7 +88,8 @@ impl Persistence for SqlitePersistence {
                 params![ts, s.equity],
             )?;
             Ok::<_, rusqlite::Error>(())
-        }).await??;
+        })
+        .await??;
         Ok(())
     }
 
@@ -105,5 +107,7 @@ impl Persistence for SqlitePersistence {
         Ok(())
     }
 
-    async fn flush(&self) -> anyhow::Result<()> { Ok(()) }
+    async fn flush(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }

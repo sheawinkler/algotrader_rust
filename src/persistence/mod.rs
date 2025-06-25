@@ -65,8 +65,16 @@ pub struct NullPersistence;
 
 #[async_trait]
 impl Persistence for NullPersistence {
-    async fn save_trade(&self, _t: &TradeRecord) -> anyhow::Result<()> { Ok(()) }
-    async fn save_snapshot(&self, _s: &EquitySnapshot) -> anyhow::Result<()> { Ok(()) }
-    async fn save_backtest(&self, _b: &BacktestSummary) -> anyhow::Result<()> { Ok(()) }
-    async fn flush(&self) -> anyhow::Result<()> { Ok(()) }
+    async fn save_trade(&self, _t: &TradeRecord) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn save_snapshot(&self, _s: &EquitySnapshot) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn save_backtest(&self, _b: &BacktestSummary) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn flush(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
 }

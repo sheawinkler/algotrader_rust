@@ -6,12 +6,14 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::backtest::{cache::BacktestCache, providers::CSVHistoricalDataProvider, Backtester, SimMode};
+use crate::backtest::{
+    cache::BacktestCache, providers::CSVHistoricalDataProvider, Backtester, SimMode,
+};
 use crate::strategies::TradingStrategyClone;
 
+use crate::persistence;
 use crate::strategies::{registry::default_strategies, TradingStrategy};
 use std::sync::Arc;
-use crate::persistence;
 
 /// Simple ranking result
 pub struct RankedStrategy {
@@ -59,9 +61,9 @@ impl MetaStrategyEngine {
                 fee_bps: 3,
                 persistence: Some(Arc::new(persistence::NullPersistence::default())),
                 risk_rules: vec![
-                     Box::new(crate::risk::StopLossRule::new(0.05)),
-                     Box::new(crate::risk::TakeProfitRule::new(0.10)),
-                 ],
+                    Box::new(crate::risk::StopLossRule::new(0.05)),
+                    Box::new(crate::risk::TakeProfitRule::new(0.10)),
+                ],
             };
 
             let rpt = futures::executor::block_on(bt.run(&data_file.to_path_buf()))?;
@@ -72,8 +74,8 @@ impl MetaStrategyEngine {
             };
 
             let is_better = match &best {
-                None => true,
-                Some(b) => ranked.sharpe > b.sharpe,
+                | None => true,
+                | Some(b) => ranked.sharpe > b.sharpe,
             } && ranked.max_drawdown < 0.3; // filter high DD
 
             if is_better {

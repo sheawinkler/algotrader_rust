@@ -1,17 +1,9 @@
+use anyhow::{anyhow, Result};
+use solana_client::{rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    instruction::Instruction,
-    message::Message,
-    pubkey::Pubkey,
-    signature::Keypair,
-    signer::Signer,
-    transaction::Transaction,
+    commitment_config::CommitmentConfig, instruction::Instruction, message::Message,
+    pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
 };
-use solana_client::{
-    rpc_client::RpcClient,
-    rpc_config::RpcSendTransactionConfig,
-};
-use anyhow::{Result, anyhow};
 use std::sync::Arc;
 
 /// Builder for Solana transactions
@@ -79,7 +71,9 @@ impl TransactionBuilder {
         let mut tx = Transaction::new_unsigned(message);
 
         if let Some(recent_blockhash) = self.recent_blockhash {
-            let blockhash = recent_blockhash.parse().map_err(|_| anyhow!("Invalid recent blockhash"))?;
+            let blockhash = recent_blockhash
+                .parse()
+                .map_err(|_| anyhow!("Invalid recent blockhash"))?;
             let signers: Vec<&Keypair> = self.signers.iter().map(|s| s.as_ref()).collect();
             tx.try_partial_sign(&signers, blockhash)?;
         }
@@ -117,13 +111,9 @@ impl TransactionBuilder {
     }
 
     /// Build, sign, and send a transaction
-    pub async fn send(
-        self,
-        client: &RpcClient,
-        skip_preflight: bool,
-    ) -> Result<String> {
+    pub async fn send(self, client: &RpcClient, skip_preflight: bool) -> Result<String> {
         let tx = self.build(client)?;
-        
+
         let config = RpcSendTransactionConfig {
             skip_preflight,
             preflight_commitment: Some(CommitmentConfig::confirmed().commitment),
@@ -143,29 +133,26 @@ pub struct TransactionHelper;
 impl TransactionHelper {
     /// Calculate the transaction fee for a given set of instructions
     pub fn calculate_fee(
-        client: &RpcClient,
-        instructions: &[Instruction],
-        signer_count: usize,
+        client: &RpcClient, instructions: &[Instruction], signer_count: usize,
     ) -> Result<u64> {
         let message = Message::new(instructions, None);
         let blockhash = client.get_latest_blockhash()?;
-        
+
         // Get fee for the message
         let fee = client.get_fee_for_message(&message)?;
-        
+
         // Each signer adds a signature fee (approximate)
         let signature_fee = signer_count as u64 * 5000; // Approximate fee per signature
-        
+
         Ok(fee * signer_count as u64 + signature_fee)
     }
-    
+
     /// Check if a transaction has been confirmed
-    pub fn is_transaction_confirmed(
-        client: &RpcClient,
-        signature: &str,
-    ) -> Result<bool> {
+    pub fn is_transaction_confirmed(client: &RpcClient, signature: &str) -> Result<bool> {
         let status = client.get_signature_statuses(&[signature.parse()?])?;
-        Ok(status.value[0].as_ref().map_or(false, |s| s.confirmations.is_some()))
+        Ok(status.value[0]
+            .as_ref()
+            .map_or(false, |s| s.confirmations.is_some()))
     }
 }
 
@@ -182,15 +169,15 @@ mod tests {
         let amount = 1_000_000; // 1 SOL in lamports
 
         let instruction = system_instruction::transfer(&from_pubkey, &to_pubkey, amount);
-        
+
         let builder = TransactionBuilder::new()
             .add_instruction(instruction)
             .fee_payer(from_pubkey);
-            
+
         assert_eq!(builder.instructions.len(), 1);
         assert_eq!(builder.fee_payer, Some(from_pubkey));
     }
-    
+
     #[test]
     fn test_transaction_builder_no_instructions() {
         let builder = TransactionBuilder::new();

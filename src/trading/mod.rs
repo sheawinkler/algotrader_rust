@@ -3,29 +3,24 @@
 //! richer definitions in `utils::types`, with a few convenience helpers expected by the
 //! strategies such as `Signal::metadata` and `OrderSide::is_buy/is_sell`.
 
-
 // Re-export core domain types from utils::types
 // so we do not maintain two divergent
 // versions of every struct.
 pub use crate::utils::types::{
-    MarketData,
-    SignalAction,
-    TradingPair,
-    Order,
-    OrderSide,
-    OrderType,
-    OrderStatus,
-    Trade,
-    Position,
-    MarketRegime,
+    MarketData, MarketRegime, Order, OrderSide, OrderStatus, OrderType, Position, SignalAction,
+    Trade, TradingPair,
 };
 
 // ---------- Convenience impls ----------
 impl crate::utils::types::OrderSide {
     /// Returns true if the side is Buy
-    pub fn is_buy(&self) -> bool { matches!(self, Self::Buy) }
+    pub fn is_buy(&self) -> bool {
+        matches!(self, Self::Buy)
+    }
     /// Returns true if the side is Sell
-    pub fn is_sell(&self) -> bool { matches!(self, Self::Sell) }
+    pub fn is_sell(&self) -> bool {
+        matches!(self, Self::Sell)
+    }
 }
 
 // Additional helpful re-exports
@@ -64,7 +59,7 @@ pub struct Signal {
     pub price: f64,
     /// Position size in base currency units.
     pub size: f64,
-        pub timestamp: i64,
+    pub timestamp: i64,
     /// Confidence score 0-1.
     pub confidence: f64,
     /// Order type (Market, Limit, etc.)
@@ -78,11 +73,14 @@ pub struct Signal {
 
 impl Signal {
     /// Helper: returns true if the signal represents a buy/long entry.
-    pub fn is_buy(&self) -> bool { self.signal_type == SignalType::Buy }
+    pub fn is_buy(&self) -> bool {
+        self.signal_type == SignalType::Buy
+    }
     /// Helper: returns true if the signal represents a sell/short entry.
-    pub fn is_sell(&self) -> bool { self.signal_type == SignalType::Sell }
+    pub fn is_sell(&self) -> bool {
+        self.signal_type == SignalType::Sell
+    }
 }
-
 
 // Simple order-book representations used by the Order Flow strategy.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -102,19 +100,3 @@ pub struct Book {
 pub type OrderBook = Book;
 
 // --- end of trading module ---
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

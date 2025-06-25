@@ -13,12 +13,9 @@ pub struct TradingPair {
 impl TradingPair {
     /// Create a new trading pair
     pub fn new(base: &str, quote: &str) -> Self {
-        Self {
-            base: base.to_uppercase(),
-            quote: quote.to_uppercase(),
-        }
+        Self { base: base.to_uppercase(), quote: quote.to_uppercase() }
     }
-    
+
     /// Parse a trading pair from a string (e.g., "SOL/USDC")
     pub fn from_str(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split('/').collect();
@@ -28,7 +25,7 @@ impl TradingPair {
             None
         }
     }
-    
+
     /// Convert to string representation (e.g., "SOL/USDC")
     pub fn to_string(&self) -> String {
         format!("{}/{}", self.base, self.quote)
@@ -292,23 +289,23 @@ pub struct BacktestResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_trading_pair() {
         let pair = TradingPair::new("sol", "usdc");
         assert_eq!(pair.base, "SOL");
         assert_eq!(pair.quote, "USDC");
-        
+
         let pair_str = "BTC/USDT".to_string();
         let pair = TradingPair::from_str(&pair_str).unwrap();
         assert_eq!(pair.base, "BTC");
         assert_eq!(pair.quote, "USDT");
         assert_eq!(pair.to_string(), "BTC/USDT");
-        
+
         let invalid = TradingPair::from_str("invalid");
         assert!(invalid.is_none());
     }
-    
+
     #[test]
     fn test_candle() {
         let candle = Candle {
@@ -319,7 +316,7 @@ mod tests {
             close: 102.5,
             volume: 1000.0,
         };
-        
+
         assert_eq!(candle.timestamp, 1_234_567_890);
         assert_eq!(candle.open, 100.0);
         assert_eq!(candle.high, 105.0);
@@ -327,13 +324,13 @@ mod tests {
         assert_eq!(candle.close, 102.5);
         assert_eq!(candle.volume, 1000.0);
     }
-    
+
     #[test]
     fn test_signal() {
         let pair = TradingPair::new("SOL", "USDC");
         let mut metadata = HashMap::new();
         metadata.insert("confidence".to_string(), "0.85".to_string());
-        
+
         let signal = Signal {
             strategy_id: "mean_reversion".to_string(),
             pair: pair.clone(),
@@ -343,12 +340,12 @@ mod tests {
             order_type: OrderType::Market,
             limit_price: None,
             stop_price: None,
-        stop_loss: Some(95.0),
+            stop_loss: Some(95.0),
             take_profit: Some(110.0),
             timestamp: 1_234_567_890,
             metadata: metadata.clone(),
         };
-        
+
         assert_eq!(signal.strategy_id, "mean_reversion");
         assert_eq!(signal.pair, pair);
         assert_eq!(signal.action, SignalAction::Buy);

@@ -1,8 +1,8 @@
 //! Unified market data stream trait and event types for multi-source integration
 
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MarketEvent {
@@ -32,5 +32,7 @@ pub enum MarketEvent {
 
 #[async_trait]
 pub trait ChannelMarketDataStream {
-    async fn connect_and_stream_channel(&mut self, symbols: Vec<String>, sender: tokio::sync::mpsc::Sender<MarketEvent>) -> Result<()>;
+    async fn connect_and_stream_channel(
+        &mut self, symbols: Vec<String>, sender: tokio::sync::mpsc::Sender<MarketEvent>,
+    ) -> Result<()>;
 }

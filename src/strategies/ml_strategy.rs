@@ -4,8 +4,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use super::{TradingStrategy, TimeFrame, StrategyConfig};
-use crate::trading::{MarketData, Signal, Position, Order};
+use super::{StrategyConfig, TimeFrame, TradingStrategy};
+use crate::trading::{MarketData, Order, Position, Signal};
 
 /// A minimal no-op ML strategy used as a placeholder so the crate compiles
 /// with the `ml` feature enabled.
@@ -39,9 +39,9 @@ impl TradingStrategy for MLStrategy {
         Vec::new()
     }
 
-    fn on_order_filled(&mut self, _order: &Order) { }
+    fn on_order_filled(&mut self, _order: &Order) {}
 
-    fn on_trade_error(&mut self, _order: &Order, _err: &anyhow::Error) { }
+    fn on_trade_error(&mut self, _order: &Order, _err: &anyhow::Error) {}
 
     fn get_positions(&self) -> Vec<&Position> {
         Vec::new()
