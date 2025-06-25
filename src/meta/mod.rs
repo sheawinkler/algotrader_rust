@@ -59,14 +59,14 @@ impl MetaStrategyEngine {
                 sim_mode: SimMode::Bar,
                 slippage_bps: 5,
                 fee_bps: 3,
-                persistence: Some(Arc::new(persistence::NullPersistence::default())),
+                persistence: Some(Arc::new(persistence::NullPersistence)),
                 risk_rules: vec![
                     Box::new(crate::risk::StopLossRule::new(0.05)),
                     Box::new(crate::risk::TakeProfitRule::new(0.10)),
                 ],
             };
 
-            let rpt = futures::executor::block_on(bt.run(&data_file.to_path_buf()))?;
+            let rpt = futures::executor::block_on(bt.run(data_file))?;
             let ranked = RankedStrategy {
                 strategy: strategy.box_clone(),
                 sharpe: rpt.sharpe,

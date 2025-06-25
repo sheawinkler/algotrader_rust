@@ -128,7 +128,7 @@ async fn main() -> Result<()> {
                     let tf = timeframe.as_deref().unwrap_or("default");
                     let out_path = output.as_ref().map(|s| std::path::Path::new(s));
                     use algotraderv2::backtest::SimMode;
-                    simple_backtest(&std::path::PathBuf::from(data), tf, SimMode::Bar, out_path)
+                    simple_backtest(std::path::Path::new(&data), tf, SimMode::Bar, out_path)
                         .await?;
                 }
                 return Ok(());
@@ -245,30 +245,19 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     log::info!("Trading engine starting (paper={})", paper);
 
     // --- Example minimal runtime task: periodically log wallet balance ---
-    use solana_client::nonblocking::rpc_client::RpcClient;
-    use solana_sdk::signature::Signer;
     use std::net::TcpListener;
     use tokio::time::{sleep, Duration};
 
     // --- Launch TradingEngine -------------------------------------------------
-    // Spawn a background task to capture system metrics every 10s
+    // Spawn a placeholder background task (system metrics collection TBD)
     tokio::spawn(async {
-        use sysinfo::{CpuExt, System, SystemExt};
-        let mut sys = System::new_all();
         loop {
-            sys.refresh_cpu();
-            sys.refresh_memory();
-            let cpu = sys.global_cpu_info().cpu_usage() as f64;
-            let mem_total = sys.total_memory() as f64;
-            let mem_used = sys.used_memory() as f64;
-            metrics::gauge!("sys_cpu_percent", cpu);
-            metrics::gauge!("sys_mem_used_bytes", mem_used);
-            metrics::gauge!("sys_mem_total_bytes", mem_total);
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            // Placeholder: hook real system metrics here once sysinfo API stabilized
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         }
     });
     use algotraderv2::TradingEngine;
-    let mut engine = TradingEngine::with_config(config.clone(), paper);
+    let mut engine = TradingEngine::with_config_async(config.clone(), paper).await;
     // Determine symbol list: use config default_pair
     let symbols = vec![config.trading.default_pair.clone()];
     // Spawn the async trading loop – runs until cancelled
@@ -284,6 +273,7 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     }
 
     let app = Router::new()
+        .route("/", get(|| async { "AlgoTraderV2 running" }))
         .route("/healthz", get(health))
         .route("/metrics", get(metrics_handler));
     let primary_addr: SocketAddr = "127.0.0.1:8888".parse().unwrap();

@@ -123,7 +123,7 @@ impl<T: TradingStrategy + AdaptiveStrategy + Send + Sync + 'static> TradingStrat
 
         // Get position size based on performance metrics
         let account_balance = 10000.0; // TODO: fetch actual balance from portfolio
-        let symbol = self.symbols().get(0).cloned().unwrap_or_default();
+        let symbol = self.symbols().first().cloned().unwrap_or_default();
 
         let position_size = match self
             .monitor
@@ -225,19 +225,6 @@ mod tests {
         fn on_order_filled(&mut self, _: &Order) {}
         fn get_positions(&self) -> Vec<&Position> {
             vec![]
-        }
-    }
-
-    #[async_trait]
-    impl AdaptiveStrategy for MockStrategy {
-        async fn get_parameters(&self) -> HashMap<String, f64> {
-            self.params.clone()
-        }
-
-        async fn update_parameters(&mut self, params: &HashMap<String, f64>) {
-            for (k, v) in params {
-                self.params.insert(k.clone(), *v);
-            }
         }
     }
 

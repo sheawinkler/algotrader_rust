@@ -247,7 +247,7 @@ impl TradingStrategy for OrderFlowStrategy {
             timestamp: SystemTime::now(),
             price: order.price,
             size: order.size,
-            side: order.side.clone(),
+            side: order.side,
             pnl: None, // Will be filled when position is closed
             metadata: serde_json::json!({}),
         };

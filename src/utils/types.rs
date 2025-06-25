@@ -10,6 +10,7 @@ pub struct TradingPair {
     pub quote: String,
 }
 
+#[allow(clippy::inherent_to_string_shadow_display)]
 impl TradingPair {
     /// Create a new trading pair
     pub fn new(base: &str, quote: &str) -> Self {
@@ -17,6 +18,7 @@ impl TradingPair {
     }
 
     /// Parse a trading pair from a string (e.g., "SOL/USDC")
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split('/').collect();
         if parts.len() == 2 {
@@ -41,6 +43,18 @@ impl Default for TradingPair {
 impl std::fmt::Display for TradingPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.base, self.quote)
+    }
+}
+
+impl std::str::FromStr for TradingPair {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split('/').collect();
+        if parts.len() == 2 {
+            Ok(TradingPair::new(parts[0], parts[1]))
+        } else {
+            Err(())
+        }
     }
 }
 

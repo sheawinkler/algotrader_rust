@@ -1,11 +1,16 @@
+#![allow(clippy::collapsible_else_if)]
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
+
+// Type alias to simplify alert queue type and satisfy clippy::type_complexity
+pub type AlertQueue = Arc<Mutex<VecDeque<(AlertType, DateTime<Utc>)>>>;
 use tracing::{debug, info, instrument, warn};
 // use rust_decimal_macros::dec; // REMOVED: crate not present
+
 use chrono::{DateTime, Utc};
 
 use crate::{
@@ -100,7 +105,7 @@ pub struct PerformanceMonitor {
     /// Last performance review time
     last_review: Arc<Mutex<Instant>>,
     /// Performance alerts
-    alerts: Arc<Mutex<VecDeque<(AlertType, DateTime<Utc>)>>>,
+    alerts: AlertQueue,
     /// Strategy analyzers
     analyzers: Arc<RwLock<HashMap<String, StrategyAnalyzer>>>,
     /// Market regime detector
@@ -189,7 +194,7 @@ impl PerformanceMonitor {
                         10, // min_trades
                         self.config.min_win_rate_pct,
                         self.config.max_drawdown_pct,
-                        self.config.lookback_days as u32,
+                        self.config.lookback_days,
                     )
                 });
 
@@ -606,6 +611,12 @@ impl PerformanceMonitor {
         if alerts.len() > 1000 {
             alerts.pop_front();
         }
+    }
+}
+
+impl Default for PerformanceMonitor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

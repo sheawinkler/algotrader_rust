@@ -102,7 +102,11 @@ impl BacktestReport {
         let root = BitMapBackend::<RGBPixel>::new(path.as_ref(), (800, 480));
         let root = root.into_drawing_area();
         root.fill(&WHITE)?;
-        let max_eq = self.equity_curve.iter().cloned().fold(0. / 0., f64::max);
+        let max_eq = self
+            .equity_curve
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
         let min_eq = self.equity_curve.iter().cloned().fold(f64::MAX, f64::min);
         let mut chart = ChartBuilder::on(&root)
             .margin(20)
@@ -171,7 +175,7 @@ pub struct Backtester {
 }
 
 impl Backtester {
-    pub async fn run(&mut self, data_file: &PathBuf) -> Result<BacktestReport> {
+    pub async fn run(&mut self, data_file: &std::path::Path) -> Result<BacktestReport> {
         // determine date range for caching
         let market_data = self.data_provider.load(data_file)?;
         if market_data.is_empty() {
@@ -394,7 +398,7 @@ use std::path::PathBuf;
 
 /// Trait for historical data providers
 pub trait HistoricalDataProvider: Send + Sync {
-    fn load(&self, data_file: &PathBuf) -> Result<Vec<MarketData>>;
+    fn load(&self, data_file: &std::path::Path) -> Result<Vec<MarketData>>;
     fn box_clone(&self) -> Box<dyn HistoricalDataProvider>;
 }
 
@@ -410,10 +414,13 @@ pub mod importer;
 pub mod providers;
 pub mod remote_provider;
 pub mod tick_provider;
+pub mod harness;
 
 /// Convenience helper used by CLI until full engine integration is ready
+use std::path::Path;
+
 pub async fn simple_backtest(
-    data_path: &PathBuf, timeframe: &str, sim_mode: SimMode, output: Option<&std::path::Path>,
+    data_path: &Path, timeframe: &str, sim_mode: SimMode, output: Option<&Path>,
 ) -> Result<()> {
     use crate::strategies::{MeanReversionStrategy, TimeFrame, TradingStrategy};
     // 1. Provider
@@ -440,7 +447,7 @@ pub async fn simple_backtest(
         starting_balance: 10_000.0,
         strategies,
         cache: None,
-        persistence: Some(std::sync::Arc::new(crate::persistence::NullPersistence::default())),
+        persistence: Some(std::sync::Arc::new(crate::persistence::NullPersistence)),
         sim_mode,
         slippage_bps: 0,
         fee_bps: 8, // 0.03 %

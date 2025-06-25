@@ -68,7 +68,7 @@ impl Persistence for SqlitePersistence {
         let conn = self.conn.clone();
         let t = trade.clone();
         tokio::task::spawn_blocking(move || {
-            let ts = t.timestamp.timestamp();
+            let ts = t.timestamp.and_utc().timestamp();
             conn.lock().unwrap().execute(
                 "INSERT INTO trade_records (timestamp, symbol, side, qty, price, pnl) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![ts, t.symbol, t.side, t.qty, t.price, t.pnl],
@@ -82,7 +82,7 @@ impl Persistence for SqlitePersistence {
         let conn = self.conn.clone();
         let s = snap.clone();
         tokio::task::spawn_blocking(move || {
-            let ts = s.timestamp.timestamp();
+            let ts = s.timestamp.and_utc().timestamp();
             conn.lock().unwrap().execute(
                 "INSERT INTO equity_snapshots (timestamp, equity) VALUES (?1, ?2)",
                 params![ts, s.equity],

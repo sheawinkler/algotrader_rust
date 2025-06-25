@@ -152,7 +152,7 @@ impl TransactionHelper {
         let status = client.get_signature_statuses(&[signature.parse()?])?;
         Ok(status.value[0]
             .as_ref()
-            .map_or(false, |s| s.confirmations.is_some()))
+            .is_some_and(|s| s.confirmations.is_some()))
     }
 }
 

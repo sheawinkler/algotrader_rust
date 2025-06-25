@@ -130,5 +130,38 @@
   - [ ] Persist portfolio and trade history to a database.
   - [ ] Improve error handling and system resilience.
 
+
+## Phase 5 – Production Readiness & Validation  
+_Status: Ongoing_
+
+### 1. Runtime Health & Diagnostics (DONE)
+- Prometheus metrics emitted for CPU, latency, PnL, equity snapshots.  
+- Alerting thresholds in place (high error‐rate, drawdown > X %).
+
+### 2. Clean-up & Polish (DONE)
+- `cargo fmt --all` applied; clippy passes with `-D warnings` (0 lints).  
+- Oversized modules split where necessary (< 700 LOC each).
+
+### 3. Validation (IN PROGRESS)
+- [ ] Back-test meta-strategies with walk-forward harness (running).  
+- [ ] Dry-run live engine in paper-trading mode with hot-reload tests (running).
+
+### 4. Python ML Sidecar Integration
+- Rust stubs (`sidecar/mod.rs`) feature-gated and compiling (DONE).  
+- Protocol defined (simple JSON/HTTP, will upgrade to gRPC later) (DONE).  
+- [ ] Implement Python sidecar service to respond to `POST /predict`.  
+- [ ] Wire hybrid decision-logic in `TradingEngine` using sidecar outputs.
+
+**Blockers / Next Up**
+1. Provide representative CSV data for walk-forward regression.  
+2. Finalise Python sidecar skeleton (Flask/FastAPI) and Dockerfile.  
+3. Decide on long-term transport (keep REST or move to gRPC over Unix socket).
+
+---
+
 ## Current Goal
+Complete Phase 5:  
+• Finish validation (walk-forward + paper-trading dry-run).  
+• Implement & hook the Python sidecar, then mark Phase 5 complete.
+
 Propose next development phase.

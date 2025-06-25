@@ -23,6 +23,8 @@ pub mod risk;
 pub mod strategies; // unified rich strategy module
 pub mod trading;
 pub mod utils;
+#[cfg(feature = "sidecar")]
+pub mod sidecar;
 
 pub mod dashboard;
 pub mod market_data;
@@ -129,6 +131,8 @@ pub struct TradingEngine {
     pub persistence: std::sync::Arc<dyn Persistence + Send + Sync>,
     retry_tx: tokio::sync::mpsc::UnboundedSender<crate::utils::types::PendingOrder>,
     retry_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::utils::types::PendingOrder>>,
+        #[cfg(feature = "sidecar")]
+        sidecar_client: Option<crate::sidecar::SidecarClient>,
 
     // Arbitrage stub
     pub paper_trading: bool,
@@ -148,6 +152,14 @@ impl TradingEngine {
         tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(Self::with_config_async(crate::config::Config::default(), false))
+    }
+
+    /// Synchronous helper that mirrors `with_config_async` but blocks on its future.
+    /// Provided mainly for tests and simple CLI usage.
+    pub fn with_config(config: crate::config::Config, paper_trading: bool) -> Self {
+        tokio::runtime::Runtime::new()
+            .expect("failed to create runtime")
+            .block_on(Self::with_config_async(config, paper_trading))
     }
     /// Construct engine from configuration
     pub async fn with_config_async(config: crate::config::Config, paper_trading: bool) -> Self {
@@ -207,7 +219,7 @@ impl TradingEngine {
         let persistence: std::sync::Arc<dyn Persistence + Send + Sync> =
             match SqlitePersistence::new(None).await {
                 | Ok(db) => std::sync::Arc::new(db),
-                | Err(_) => std::sync::Arc::new(crate::persistence::NullPersistence::default()),
+                | Err(_) => std::sync::Arc::new(crate::persistence::NullPersistence),
             };
 
         let mut strategies_vec: Vec<Box<dyn crate::strategies::TradingStrategy>> = Vec::new();
@@ -324,6 +336,16 @@ impl TradingEngine {
         for strat in &strategies_vec {
             perf_map.insert(strat.name().to_string(), PerformanceMonitor::new());
         }
+        #[cfg(feature = "sidecar")]
+        let sidecar_client_opt = if let Some(scfg) = &config.sidecar {
+            if scfg.enabled {
+                Some(crate::sidecar::SidecarClient::new(scfg.endpoint.clone()))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         TradingEngine {
             dex_clients: std::collections::HashMap::new(),
             strategies: strategies_vec,
@@ -357,6 +379,8 @@ impl TradingEngine {
             persistence: persistence.clone(),
             retry_tx,
             retry_rx: Some(retry_rx),
+            #[cfg(feature = "sidecar")]
+            sidecar_client: sidecar_client_opt,
             slippage_bps,
             max_fee_lamports,
             split_threshold_sol,
@@ -690,7 +714,7 @@ impl TradingEngine {
         let mut router = MarketRouter::new();
 
         // Prepare symbols for streams
-        let symbol_strs: Vec<String> = symbols.iter().cloned().collect();
+        let symbol_strs = symbols.to_vec();
 
         // Add Binance stream
         let binance_stream =
@@ -710,11 +734,12 @@ impl TradingEngine {
         let coinbase_stream =
             Box::new(crate::utils::coinbase_stream::CoinbaseStream::new(&symbol_strs));
         router.add_stream(coinbase_stream);
+
         let kraken_stream = Box::new(crate::utils::kraken_stream::KrakenStream::new());
         router.add_stream(kraken_stream);
         // SerumStream requires a market symbol, use the first symbol or fallback
         let serum_market = symbol_strs
-            .get(0)
+            .first()
             .cloned()
             .unwrap_or_else(|| "SOL/USDC".to_string());
         let serum_stream = Box::new(crate::utils::serum_stream::SerumStream::new(&serum_market));
@@ -723,7 +748,7 @@ impl TradingEngine {
         let triton_api_key =
             std::env::var("TRITON_API_KEY").unwrap_or_else(|_| "demo-key".to_string());
         let triton_market = symbol_strs
-            .get(0)
+            .first()
             .cloned()
             .unwrap_or_else(|| "SOL/USDC".to_string());
         let triton_stream = Box::new(crate::utils::triton_stream::TritonStream::new(
@@ -843,7 +868,7 @@ impl TradingEngine {
             stop_price: sig.stop_price,
             stop_loss: None,
             take_profit: None,
-            timestamp: sig.timestamp as i64,
+            timestamp: sig.timestamp,
             metadata: std::collections::HashMap::new(),
         })
     }
@@ -905,7 +930,35 @@ impl TradingEngine {
         Ok(())
     }
 
-    async fn handle_signals(&mut self, signals: Vec<Signal>) -> anyhow::Result<()> {
+    async fn handle_signals(&mut self, mut signals: Vec<Signal>) -> anyhow::Result<()> {
+        #[cfg(feature = "sidecar")]
+        if let Some(sc) = &self.sidecar_client {
+            if let Some(cfg) = &self.config.sidecar {
+                if cfg.enabled {
+                    if let Ok(feat) = serde_json::to_value(&signals) {
+                        match sc.predict(feat).await {
+                            Ok(resp) => {
+                                // Try to parse array of signals directly, otherwise look for {"signals": [...]}
+                                let sidecar_sigs: Vec<Signal> = if let Ok(vec) = serde_json::from_value::<Vec<Signal>>(resp.clone()) {
+                                    vec
+                                } else if let Some(arr) = resp.get("signals").and_then(|v| v.as_array()) {
+                                    serde_json::from_value::<Vec<Signal>>(serde_json::Value::Array(arr.clone()))
+                                        .unwrap_or_default()
+                                } else {
+                                    Vec::new()
+                                };
+                                if !sidecar_sigs.is_empty() {
+                                    log::info!("Blended {} sidecar signals (weight {:.2})", sidecar_sigs.len(), cfg.weight);
+                                    // TODO: weight-based blending – for now just append
+                                    signals.extend(sidecar_sigs);
+                                }
+                            }
+                            Err(e) => log::warn!("Sidecar predict error: {}", e),
+                        }
+                    }
+                }
+            }
+        }
         for sig in signals {
             // Risk checks
             if self.open_trades >= self.max_open_trades {
@@ -1004,6 +1057,7 @@ impl TradingEngine {
                         }
                     }
                     if !executed {
+                        #[allow(clippy::collapsible_if)]
                         if let Some(err) = &last_err {
                             if sig.order_type == crate::utils::types::OrderType::Stop
                                 || sig.order_type == crate::utils::types::OrderType::StopLimit
@@ -1063,7 +1117,9 @@ impl TradingEngine {
                 // Append history
                 self.trade_history.push(TradeRecord {
                     id: None,
-                    timestamp: chrono::NaiveDateTime::from_timestamp(sig.timestamp, 0),
+                    timestamp: chrono::DateTime::<chrono::Utc>::from_timestamp(sig.timestamp, 0)
+                        .unwrap()
+                        .naive_utc(),
                     symbol: sig.pair.to_string(),
                     side: match sig.action {
                         | SignalAction::Buy => "buy".into(),
@@ -1131,7 +1187,7 @@ impl TradingEngine {
                     // Append history
                     self.trade_history.push(TradeRecord {
                             id: None,
-                            timestamp: chrono::NaiveDateTime::from_timestamp(sig.timestamp, 0),
+                            timestamp: chrono::DateTime::<chrono::Utc>::from_timestamp(sig.timestamp, 0).unwrap().naive_utc(),
                             symbol: sig.pair.to_string(),
                             side: match sig.action { SignalAction::Buy => "buy".into(), SignalAction::Sell => "sell".into(), _ => "other".into() },
                             qty: chunk,
@@ -1146,7 +1202,6 @@ impl TradingEngine {
     }
 
     /// Convert incoming MarketEvent to simple MarketData for strategy consumption
-
     fn convert_market_event(
         event: &crate::utils::market_stream::MarketEvent,
     ) -> Option<MarketData> {
@@ -1200,6 +1255,12 @@ impl TradingEngine {
     pub async fn start(&self) -> Result<()> {
         // Main trading loop
         Ok(())
+    }
+}
+
+impl Default for TradingEngine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

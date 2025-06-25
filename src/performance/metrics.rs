@@ -111,7 +111,7 @@ impl StrategyMetrics {
         let kelly = (win_prob * win_loss_ratio - (1.0 - win_prob)) / win_loss_ratio;
 
         // Use half-Kelly for more conservative position sizing
-        (kelly * 0.5).max(0.01).min(0.5) // Between 1% and 50%
+        (kelly * 0.5).clamp(0.01, 0.5) // Between 1% and 50%
     }
 
     /// Calculate risk of ruin
@@ -136,7 +136,7 @@ impl StrategyMetrics {
             / (1.0 + (win_rate - loss_rate / win_loss_ratio)))
             .powf(1.0 / 0.02);
 
-        risk.max(0.0).min(1.0)
+        risk.clamp(0.0, 1.0)
     }
 }
 
@@ -171,6 +171,6 @@ mod tests {
 
         // Test risk of ruin
         let ror = metrics.risk_of_ruin();
-        assert!(ror >= 0.0 && ror <= 1.0);
+        assert!((0.0..=1.0).contains(&ror));
     }
 }

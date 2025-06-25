@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_else_if)]
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -231,6 +232,7 @@ impl TradingStrategy for MemeArbitrageStrategy {
 
         // Skip if we don't have DEX price data
         let prices_opt = market_data.dex_prices.as_ref();
+        #[allow(clippy::unnecessary_map_or)]
         if prices_opt.map_or(true, |m| m.is_empty()) {
             return signals;
         }
@@ -283,7 +285,7 @@ impl TradingStrategy for MemeArbitrageStrategy {
             entry_price: order.price,
             exit_price: None,
             size: order.size,
-            side: order.side.clone(),
+            side: order.side,
             pnl: None,
             pnl_pct: None,
             metadata: serde_json::json!({}),
@@ -298,7 +300,7 @@ impl TradingStrategy for MemeArbitrageStrategy {
                     current_price: order.price,
                     stop_loss: Some(order.price * (1.0 - self.max_slippage_pct)),
                     take_profit: Some(order.price * (1.0 + self.max_slippage_pct * 2.0)),
-                    side: order.side.clone(),
+                    side: order.side,
                     timestamp: SystemTime::now()
                         .duration_since(UNIX_EPOCH)
                         .unwrap()

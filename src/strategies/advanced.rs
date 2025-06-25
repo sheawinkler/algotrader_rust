@@ -45,6 +45,7 @@ pub struct AdvancedStrategy {
 
 impl AdvancedStrategy {
     /// Create a new instance of AdvancedStrategy
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         symbol: &str, timeframe: TimeFrame, rsi_period: usize, bb_period: usize,
         bb_multiplier: f64, kc_period: usize, kc_multiplier: f64, mfi_period: usize,
@@ -295,9 +296,9 @@ impl TradingStrategy for AdvancedStrategy {
 
         // Add volume confirmation
         if let Some(signal) = signals.last_mut() {
-            if mfi < 20.0 && signal.signal_type == SignalType::Buy {
-                signal.confidence += 0.1;
-            } else if mfi > 80.0 && signal.signal_type == SignalType::Sell {
+            if (mfi < 20.0 && signal.signal_type == SignalType::Buy)
+                || (mfi > 80.0 && signal.signal_type == SignalType::Sell)
+            {
                 signal.confidence += 0.1;
             }
         }
@@ -328,7 +329,7 @@ impl TradingStrategy for AdvancedStrategy {
                         .as_secs() as i64,
                     stop_loss: Some(order.price * 0.99), // 1% stop loss
                     take_profit: Some(order.price * 1.02), // 2% take profit
-                    side: order.side.clone(),
+                    side: order.side,
                     ..Default::default()
                 });
             }
@@ -356,7 +357,9 @@ mod tests {
     use chrono::Utc;
     use std::time::{Duration, SystemTime};
 
+    #[allow(clippy::field_reassign_with_default)]
     fn create_test_market_data(price: f64, volume: f64) -> MarketData {
+        #[allow(clippy::field_reassign_with_default)]
         let mut md = MarketData::default();
         md.pair = TradingPair::new("TEST", "USD");
         md.symbol = "TEST/USD".to_string();

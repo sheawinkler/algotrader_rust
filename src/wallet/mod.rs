@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -57,6 +58,7 @@ impl Wallet {
 
         let program_id = spl_token::id();
 
+        #[allow(deprecated)]
         let filters = Some(vec![solana_client::rpc_filter::RpcFilterType::Memcmp(
             solana_client::rpc_filter::Memcmp {
                 offset: 32, // owner field start
@@ -82,8 +84,11 @@ impl Wallet {
             .await?;
         let mut map = std::collections::HashMap::new();
         for (_pubkey, acc) in accounts {
-            if let Ok(ta) = TokenAccount::unpack(&acc.data) {
-                *map.entry(ta.mint).or_insert(0) += ta.amount;
+            let data_b64 = acc.data;
+            if let Ok(raw) = STANDARD.decode(data_b64) {
+                if let Ok(ta) = TokenAccount::unpack(&raw) {
+                    *map.entry(ta.mint).or_insert(0) += ta.amount;
+                }
             }
         }
         Ok(map)
@@ -105,7 +110,7 @@ impl Wallet {
     ) -> Result<solana_sdk::signature::Signature> {
         use solana_sdk::signer::signers::Signers;
         use solana_sdk::transaction::VersionedTransaction;
-        let tx_bytes = base64::decode(tx_b64.trim())?;
+        let tx_bytes = STANDARD.decode(tx_b64.trim())?;
         let vtx: VersionedTransaction = bincode::deserialize(&tx_bytes)?;
         // Create a freshly signed copy using our keypair
         let signed_tx =

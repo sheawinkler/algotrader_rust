@@ -1,3 +1,4 @@
+#![allow(clippy::empty_line_after_doc_comments)]
 //! Position sizing policies.
 //! Each implementation converts account equity into a position size (in base currency units).
 
@@ -148,6 +149,7 @@ impl PositionSizer for LiveKellySizer {
 /// Volatility-scaled sizer using ATR.
 /// position = equity * risk_pct / (atr * atr_mult)
 
+#[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct VolatilitySizer {
     pub risk_pct: f64, // equity risk fraction

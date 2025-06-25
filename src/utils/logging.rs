@@ -63,16 +63,11 @@ mod tests {
         warn!("This is a warning message");
         info!("This is an info message");
         debug!("This is a debug message");
-
-        // This test just verifies that the logging functions don't panic
-        assert!(true);
     }
 
     #[test]
     fn test_test_logging() {
         init_test_logging();
         debug!("This debug message should only appear in test output with --nocapture");
-        // This test just verifies that the test logging function doesn't panic
-        assert!(true);
     }
 }

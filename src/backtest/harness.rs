@@ -9,7 +9,7 @@ use crate::Result;
 use crate::utils::types::MarketData;
 use tempfile::NamedTempFile;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Simple config expressed in days for training & testing spans
 pub struct WalkForwardConfig {
@@ -21,8 +21,10 @@ pub struct WalkForwardConfig {
 /// Run walk-forward analysis on a single data CSV file.
 /// Returns backtest reports for each test window.
 /// NOTE: This uses a temporary filtered CSV per window for simplicity.
+/// Run walk-forward analysis on a single data CSV file.
+/// `data_path` is borrowed as a `Path` (no needless `PathBuf`).
 pub async fn run_walk_forward(
-    data_path: &PathBuf,
+    data_path: &Path,
     timeframe: &str,
     sim_mode: SimMode,
     cfg: WalkForwardConfig,
@@ -84,9 +86,9 @@ pub async fn run_walk_forward(
             sim_mode,
             slippage_bps: 0,
             fee_bps: 8,
-            persistence: Some(Arc::new(persistence::NullPersistence::default())),
+            persistence: Some(Arc::new(persistence::NullPersistence)),
         };
-        let rpt = bt.run(&tmp_path).await?;
+        let rpt = bt.run(tmp_path.as_path()).await?;
         reports.push(rpt);
         window_start += step_secs;
     }

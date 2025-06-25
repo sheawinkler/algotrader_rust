@@ -21,6 +21,7 @@ pub trait DexClient: Send + Sync {
     async fn get_price(&self, base_token: &str, quote_token: &str) -> crate::Result<f64>;
 
     /// Execute a trade
+    #[allow(clippy::too_many_arguments)]
     async fn execute_trade(
         &self, base_token: &str, quote_token: &str, amount: f64, is_buy: bool, slippage_bps: u16,
         max_fee_lamports: u64, order_type: crate::utils::types::OrderType,

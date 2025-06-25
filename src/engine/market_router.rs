@@ -18,7 +18,14 @@ pub trait ChannelMarketDataStream: Send + Sync {
 
 /// MarketRouter manages multiple market data streams and routes events to the trading engine
 pub struct MarketRouter {
+    // Event streams feeding market data
     streams: Vec<Box<dyn ChannelMarketDataStream + Send + Sync>>,
+}
+
+impl Default for MarketRouter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MarketRouter {

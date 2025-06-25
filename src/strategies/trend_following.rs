@@ -51,8 +51,26 @@ enum TrendDirection {
     Sideways,
 }
 
-impl TrendFollowingStrategy {
-    /// Create a new instance of TrendFollowingStrategy
+#[derive(Debug, Clone)]
+pub struct TrendFollowingConfig {
+    pub symbol: String,
+    pub timeframe: TimeFrame,
+    pub fast_ema_period: usize,
+    pub medium_ema_period: usize,
+    pub slow_ema_period: usize,
+    pub macd_fast: u8,
+    pub macd_slow: u16,
+    pub macd_signal: u8,
+    pub adx_period: u8,
+    pub atr_period: u8,
+    pub trailing_stop_pct: f64,
+    pub max_drawdown_pct: f64,
+    pub position_size_pct: f64,
+}
+
+impl TrendFollowingConfig {
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         symbol: &str, timeframe: TimeFrame, fast_ema_period: usize, medium_ema_period: usize,
         slow_ema_period: usize, macd_fast: u8, macd_slow: u16, macd_signal: u8, adx_period: u8,
@@ -61,30 +79,55 @@ impl TrendFollowingStrategy {
         Self {
             symbol: symbol.to_string(),
             timeframe,
-            fast_ema: CachedIndicator::new(ExponentialMovingAverage::new(fast_ema_period).unwrap()),
-            medium_ema: CachedIndicator::new(
-                ExponentialMovingAverage::new(medium_ema_period).unwrap(),
+            fast_ema_period,
+            medium_ema_period,
+            slow_ema_period,
+            macd_fast,
+            macd_slow,
+            macd_signal,
+            adx_period,
+            atr_period,
+            trailing_stop_pct,
+            max_drawdown_pct,
+            position_size_pct,
+        }
+    }
+}
+
+impl TrendFollowingStrategy {
+    /// Create a new instance of TrendFollowingStrategy
+    pub fn new(cfg: TrendFollowingConfig) -> Self {
+        Self {
+            symbol: cfg.symbol,
+            timeframe: cfg.timeframe,
+            fast_ema: CachedIndicator::new(
+                ExponentialMovingAverage::new(cfg.fast_ema_period).unwrap(),
             ),
-            slow_ema: CachedIndicator::new(ExponentialMovingAverage::new(slow_ema_period).unwrap()),
+            medium_ema: CachedIndicator::new(
+                ExponentialMovingAverage::new(cfg.medium_ema_period).unwrap(),
+            ),
+            slow_ema: CachedIndicator::new(
+                ExponentialMovingAverage::new(cfg.slow_ema_period).unwrap(),
+            ),
             macd: MovingAverageConvergenceDivergence::new(
-                macd_fast as usize,
-                macd_slow as usize,
-                macd_signal as usize,
+                cfg.macd_fast as usize,
+                cfg.macd_slow as usize,
+                cfg.macd_signal as usize,
             )
             .unwrap(),
             ppc: PercentagePriceOscillator::new(
-                fast_ema_period,
-                slow_ema_period,
-                macd_signal as usize,
+                cfg.fast_ema_period,
+                cfg.slow_ema_period,
+                cfg.macd_signal as usize,
             )
             .unwrap(),
-            adx: AverageDirectionalIndex::new(adx_period as usize),
-            atr: SimpleMovingAverage::new(atr_period as usize).unwrap(),
+            adx: AverageDirectionalIndex::new(cfg.adx_period as usize),
+            atr: SimpleMovingAverage::new(cfg.atr_period as usize).unwrap(),
             position: None,
             trend_direction: TrendDirection::Sideways,
-            trailing_stop_pct: trailing_stop_pct / 100.0,
-            max_drawdown_pct: max_drawdown_pct / 100.0,
-            position_size_pct: position_size_pct / 100.0,
+            trailing_stop_pct: cfg.trailing_stop_pct / 100.0,
+            max_drawdown_pct: cfg.max_drawdown_pct / 100.0,
+            position_size_pct: cfg.position_size_pct / 100.0,
             peak_equity: 1.0,
             current_drawdown: 0.0,
         }
@@ -344,7 +387,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_trend_following_strategy() {
-        let mut strategy = TrendFollowingStrategy::new(
+        let cfg = TrendFollowingConfig::new(
             "SOL/USDC",
             TimeFrame::OneHour,
             9,   // fast_ema_period
@@ -359,6 +402,7 @@ mod tests {
             5.0, // max_drawdown_pct
             2.0, // position_size_pct
         );
+        let mut strategy = TrendFollowingStrategy::new(cfg);
 
         // Generate test data with an uptrend
         let mut price = 100.0;

@@ -16,12 +16,8 @@ pub fn init() -> Result<(), Box<dyn Error + Send + Sync>> {
     }
 
     let builder = PrometheusBuilder::new();
-    let recorder = builder.build();
-    let handle = recorder.handle();
-
-    // ignore error if recorder already set by tests
-    let _ = metrics::set_boxed_recorder(Box::new(recorder));
-
+    // install_recorder returns the handle and installs the recorder globally
+    let handle = builder.install_recorder()?;
     let _ = PROM_HANDLE.set(handle);
     Ok(())
 }

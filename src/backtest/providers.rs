@@ -7,8 +7,7 @@ use serde::Deserialize;
 use std::fs;
 use std::io::Cursor;
 
-use crate::backtest::tick_provider::CSVTicksProvider;
-use std::path::PathBuf;
+use std::path::Path;
 
 /// Simple CSV row matching the extended MarketData struct
 #[derive(Debug, Deserialize)]
@@ -31,8 +30,14 @@ impl CSVHistoricalDataProvider {
     }
 }
 
+impl Default for CSVHistoricalDataProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HistoricalDataProvider for CSVHistoricalDataProvider {
-    fn load(&self, data_file: &PathBuf) -> Result<Vec<MarketData>> {
+    fn load(&self, data_file: &std::path::Path) -> Result<Vec<MarketData>> {
         let no_cache = std::env::var("BACKTEST_NO_CACHE").is_ok();
         let key = cache::build_key(&["csv", data_file.to_string_lossy().as_ref()]);
         let raw_bytes = if !no_cache {
