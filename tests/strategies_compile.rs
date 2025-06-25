@@ -7,12 +7,7 @@ use algotraderv2::strategies::{StrategyConfig, StrategyFactory};
 use serde_json::json;
 
 fn dummy_cfg(name: &str) -> StrategyConfig {
-    StrategyConfig {
-        name: name.to_string(),
-        enabled: true,
-        params: json!({}),
-        performance: None,
-    }
+    StrategyConfig { name: name.to_string(), enabled: true, params: json!({}), performance: None }
 }
 
 macro_rules! strategy_compile_test {

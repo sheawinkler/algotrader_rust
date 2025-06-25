@@ -10,6 +10,8 @@ use crate::backtest::{cache::BacktestCache, providers::CSVHistoricalDataProvider
 use crate::strategies::TradingStrategyClone;
 
 use crate::strategies::{registry::default_strategies, TradingStrategy};
+use std::sync::Arc;
+use crate::persistence;
 
 /// Simple ranking result
 pub struct RankedStrategy {
@@ -55,6 +57,7 @@ impl MetaStrategyEngine {
                 sim_mode: SimMode::Bar,
                 slippage_bps: 5,
                 fee_bps: 3,
+                persistence: Some(Arc::new(persistence::NullPersistence::default())),
                 risk_rules: vec![
                      Box::new(crate::risk::StopLossRule::new(0.05)),
                      Box::new(crate::risk::TakeProfitRule::new(0.10)),

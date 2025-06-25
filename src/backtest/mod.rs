@@ -151,6 +151,8 @@ pub struct Backtester {
     pub strategies: Vec<Box<dyn crate::strategies::TradingStrategy>>,
     /// Optional cache for storing/retrieving back-test reports
     pub cache: Option<crate::backtest::cache::BacktestCache>,
+    /// Optional persistence backend
+    pub persistence: Option<std::sync::Arc<dyn crate::persistence::Persistence + Send + Sync>>,
     /// Risk rules (stop-loss, take-profit, etc.)
     pub risk_rules: Vec<Box<dyn crate::risk::RiskRule>>,
     /// Simulation mode (bar vs tick)
@@ -329,6 +331,19 @@ impl Backtester {
         if let Some(cache)=&self.cache{
             let _ = cache.insert(&strat_key, "UNK", &self.timeframe, start_ts, end_ts, &report);
         }
+        // Persist summary if configured
+        if let Some(p) = &self.persistence {
+            let summary = crate::persistence::BacktestSummary {
+                id: None,
+                strategy: strat_key.clone(),
+                timeframe: self.timeframe.clone(),
+                start_balance: self.starting_balance,
+                end_balance: ending_balance,
+                sharpe,
+                max_drawdown,
+            };
+            let _ = p.save_backtest(&summary).await;
+        }
         Ok(report)
     }
 }
@@ -354,6 +369,8 @@ impl Clone for Box<dyn HistoricalDataProvider> {
 
 pub mod providers;
 pub mod tick_provider;
+pub mod remote_provider;
+pub mod importer;
 pub mod event;
 pub mod cache;
 
@@ -379,6 +396,7 @@ pub async fn simple_backtest(data_path: &PathBuf, timeframe: &str, sim_mode: Sim
         starting_balance: 10_000.0,
         strategies,
         cache: None,
+        persistence: Some(std::sync::Arc::new(crate::persistence::NullPersistence::default())),
         sim_mode,
         slippage_bps: 0,
         fee_bps: 8,      // 0.03 %

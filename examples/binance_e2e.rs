@@ -11,8 +11,8 @@ fn main() {
         // Test with BTCUSDT symbol
         let symbols = vec!["btcusdt".to_string()];
         match engine.start_with_market_router(symbols, None, None).await {
-            Ok(_) => println!("E2E Binance stream test completed."),
-            Err(e) => eprintln!("E2E test failed: {}", e),
+            | Ok(_) => println!("E2E Binance stream test completed."),
+            | Err(e) => eprintln!("E2E test failed: {}", e),
         }
     });
 }

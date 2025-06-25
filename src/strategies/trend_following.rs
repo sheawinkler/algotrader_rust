@@ -77,7 +77,7 @@ impl TrendFollowingStrategy {
             slow_ema: CachedIndicator::new(ExponentialMovingAverage::new(slow_ema_period).unwrap()),
             macd: MovingAverageConvergenceDivergence::new(macd_fast as usize, macd_slow as usize, macd_signal as usize).unwrap(),
             ppc: PercentagePriceOscillator::new(fast_ema_period, slow_ema_period, macd_signal as usize).unwrap(),
-            adx: AverageDirectionalIndex::new(adx_period as usize).unwrap(),
+            adx: AverageDirectionalIndex::new(adx_period as usize),
             atr: SimpleMovingAverage::new(atr_period as usize).unwrap(),
             position: None,
             trend_direction: TrendDirection::Sideways,
@@ -119,12 +119,6 @@ impl TrendFollowingStrategy {
         };
     }
     
-    /// Calculate position size based on volatility and account balance
-    fn calculate_position_size(&self, price: f64, account_balance: f64, atr_val: f64) -> f64 {
-        let risk_amount = account_balance * self.position_size_pct;
-        let position_size = risk_amount / (atr_val * 2.0); // Use 2x ATR for position sizing
-        position_size.max(0.0)
-    }
     
     /// Check if we should exit a position due to stop loss or trend reversal
     fn should_exit_position(&mut self, price: f64, position: &Position) -> bool {
@@ -186,6 +180,8 @@ impl TradingStrategy for TrendFollowingStrategy {
         let _ = self.ppc.next(market_data.close);
         let _ = self.adx.next(market_data.close);
         let atr_val = self.atr.next(market_data.high.unwrap_or(market_data.close) - market_data.low.unwrap_or(market_data.close));
+        // Publish ATR to global cache so position sizer can access
+        crate::utils::atr_cache::update(&self.symbol, atr_val);
         
         // Update trend direction
         self.update_trend_direction(market_data.close);
@@ -204,7 +200,7 @@ impl TradingStrategy for TrendFollowingStrategy {
             signals.push(Signal {
                 symbol: self.symbol.clone(),
                 signal_type: SignalType::Sell,
-                size: 1.0,
+                size: 0.0,
                 price: market_data.close,
                  order_type: OrderType::Market,
                  limit_price: None,
@@ -229,7 +225,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                         signals.push(Signal {
                             symbol: self.symbol.clone(),
                             signal_type: SignalType::Buy,
-                            size: 1.0,
+                            size: 0.0,
                             price: market_data.close,
                  order_type: OrderType::Market,
                  limit_price: None,
@@ -255,7 +251,7 @@ impl TradingStrategy for TrendFollowingStrategy {
                         signals.push(Signal {
                             symbol: self.symbol.clone(),
                             signal_type: SignalType::Sell,
-                    size: 1.0,
+                    size: 0.0,
                             price: market_data.close,
                  order_type: OrderType::Market,
                  limit_price: None,
@@ -384,7 +380,7 @@ mod tests {
                     id: "TEST".to_string(),
                      symbol: "SOL/USDC".to_string(),
                     side: OrderSide::Buy,
-                    size: 1.0,
+                    size: 0.0,
                     price: close,
                      order_type: OrderType::Market,
                     order_type: OrderType::Market,

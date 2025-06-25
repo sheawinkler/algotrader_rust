@@ -4,6 +4,8 @@
 
 use crate::portfolio::Position;
 
+pub mod position_sizer;
+
 /// Action requested by a risk-rule evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RiskAction {

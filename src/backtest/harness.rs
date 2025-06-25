@@ -2,6 +2,8 @@
 //! Iteratively runs backtests on rolling train/test windows and aggregates reports.
 
 use crate::backtest::{Backtester, SimMode, HistoricalDataProvider, providers::CSVHistoricalDataProvider, tick_provider::CSVTicksProvider};
+use std::sync::Arc;
+use crate::persistence;
 use crate::strategies::{MeanReversionStrategy, TradingStrategy, TimeFrame};
 use crate::Result;
 use crate::utils::types::MarketData;
@@ -82,6 +84,7 @@ pub async fn run_walk_forward(
             sim_mode,
             slippage_bps: 0,
             fee_bps: 8,
+            persistence: Some(Arc::new(persistence::NullPersistence::default())),
         };
         let rpt = bt.run(&tmp_path).await?;
         reports.push(rpt);

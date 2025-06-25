@@ -531,7 +531,8 @@ impl TradingBot {
             };
             
             // Calculate position size based on risk management
-            let position_size = self.calculate_position_size(market_data.close);
+            let equity = self.current_balance;
+            let position_size = self.position_sizer.size(equity, &signal.pair.to_string()).await;
             
             // Place a buy order
             match client.place_order(
@@ -596,18 +597,8 @@ impl TradingBot {
         Ok(())
     }
     
-    /// Calculate position size based on risk management rules
-    fn calculate_position_size(&self, price: f64) -> f64 {
-        // Simple position sizing: risk 1% of account balance per trade
-        let risk_percent = 0.01;
-        let account_balance = self.calculate_total_balance(price);
-        let risk_amount = account_balance * risk_percent;
+
         
-        // Calculate position size based on stop loss
-        let stop_loss_pct = 0.02;  // 2% stop loss
-        let position_size = risk_amount / (price * stop_loss_pct);
-        
-        position_size
     }
     
     /// Update positions based on filled orders

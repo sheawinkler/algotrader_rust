@@ -15,6 +15,7 @@ pub mod serum_stream;
 pub mod helius_stream;
 pub mod triton_stream;
 pub mod indicators;
+pub mod atr_cache;
 
 #[cfg(feature = "legacy_config")]
 pub use config::Config;

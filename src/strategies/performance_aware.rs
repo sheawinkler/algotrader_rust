@@ -10,7 +10,7 @@ use crate::trading::{MarketData, Signal, Order, Position};
 use super::{TradingStrategy, TimeFrame};
 
 /// Wraps a trading strategy with performance monitoring and adaptation
-pub struct PerformanceAwareStrategy<T: TradingStrategy + Send + Sync + 'static> {
+pub struct PerformanceAwareStrategy<T: TradingStrategy + AdaptiveStrategy + Send + Sync + 'static> {
     inner: T,
     monitor: PerformanceMonitor,
     analyzer: StrategyAnalyzer,
@@ -19,7 +19,7 @@ pub struct PerformanceAwareStrategy<T: TradingStrategy + Send + Sync + 'static> 
     analysis_interval: Duration,
 }
 
-impl<T: TradingStrategy + Send + Sync + 'static> PerformanceAwareStrategy<T> {
+impl<T: TradingStrategy + AdaptiveStrategy + Send + Sync + 'static> PerformanceAwareStrategy<T> {
     /// Create a new performance-aware strategy wrapper
     pub fn new(
         inner: T,
@@ -38,14 +38,15 @@ impl<T: TradingStrategy + Send + Sync + 'static> PerformanceAwareStrategy<T> {
     }
     
     /// Check if it's time to analyze performance and potentially adjust the strategy
-    async fn check_and_analyze(&self) {
+    /// Analyze performance; returns suggested parameter updates (if any).
+    async fn check_and_analyze(&self) -> Option<std::collections::HashMap<String, f64>> {
         let now = std::time::Instant::now();
         let mut last_analysis = self.last_analysis.lock().await;
         
         // Check if enough time has passed since last analysis
         if let Some(last) = *last_analysis {
             if now.duration_since(last) < self.analysis_interval {
-                return;
+                return None;
             }
         }
         
@@ -54,23 +55,33 @@ impl<T: TradingStrategy + Send + Sync + 'static> PerformanceAwareStrategy<T> {
             Ok(Some(m)) => m,
             _ => {
                 *last_analysis = Some(now);
-                return;
+                return None;
             }
         };
         
         // Get current parameters
-        let params = self.params.lock().await.clone();
-        
-        // Generate performance report
-        let report = self.analyzer.generate_report(&metrics, &params);
+        let params_snapshot = self.params.lock().await.clone();
+
+        // Generate suggestions
+        let suggestions = self.analyzer.analyze_strategy(&metrics, &params_snapshot);
+
+        // Build updates map
+        let mut updates = std::collections::HashMap::new();
+        for s in &suggestions {
+            updates.insert(s.parameter.clone(), s.suggested_value);
+        }
+
+        // Generate performance report (for logging)
+        let report = self.analyzer.generate_report(&metrics, &params_snapshot);
         println!("\n=== Performance Analysis ===\n{}\n===========================\n", report);
-        
+
         // Update last analysis time
         *last_analysis = Some(now);
+        if updates.is_empty() { None } else { Some(updates) }
     }
     
     /// Apply parameter updates to the inner strategy
-    async fn apply_parameter_updates(&mut self, updates: HashMap<String, f64>) {
+    async fn apply_parameter_updates(&mut self, updates: std::collections::HashMap<String, f64>) {
         if updates.is_empty() {
             return;
         }
@@ -81,15 +92,13 @@ impl<T: TradingStrategy + Send + Sync + 'static> PerformanceAwareStrategy<T> {
             params.insert(key, value);
         }
         
-        // If the inner strategy implements parameter updates, apply them
-        if let Some(adaptive) = (&mut self.inner as &mut dyn std::any::Any).downcast_mut::<Box<dyn AdaptiveStrategy>>() {
-            adaptive.update_parameters(&params).await;
-        }
+        // Apply updates to inner strategy
+        self.inner.update_parameters(&params).await;
     }
 }
 
 #[async_trait]
-impl<T: TradingStrategy + Send + Sync + 'static> TradingStrategy for PerformanceAwareStrategy<T> {
+impl<T: TradingStrategy + AdaptiveStrategy + Send + Sync + 'static> TradingStrategy for PerformanceAwareStrategy<T> {
     fn name(&self) -> &str {
         self.inner.name()
     }
@@ -103,13 +112,15 @@ impl<T: TradingStrategy + Send + Sync + 'static> TradingStrategy for Performance
     }
     
     async fn generate_signals(&mut self, market_data: &MarketData) -> Vec<Signal> {
-        // Check if we need to analyze performance
-        self.check_and_analyze().await;
-        
-        // Get position size based on performance
-        let account_balance = 10000.0; // TODO: fetch actual balance
+        // Run analysis and apply any suggested parameter updates once per call
+        if let Some(updates) = self.check_and_analyze().await {
+            self.apply_parameter_updates(updates).await;
+        }
+
+        // Get position size based on performance metrics
+        let account_balance = 10000.0; // TODO: fetch actual balance from portfolio
         let symbol = self.symbols().get(0).cloned().unwrap_or_default();
-        
+
         let position_size = match self.monitor
             .get_recommended_position_size(self.name(), &symbol, account_balance, None)
             .await {
@@ -162,10 +173,20 @@ impl<T: TradingStrategy + Send + Sync + 'static> TradingStrategy for Performance
 #[async_trait]
 pub trait AdaptiveStrategy: TradingStrategy {
     /// Get current strategy parameters
-    async fn get_parameters(&self) -> HashMap<String, f64>;
-    
+    async fn get_parameters(&self) -> HashMap<String, f64> {
+        HashMap::new()
+    }
     /// Update strategy parameters
-    async fn update_parameters(&mut self, params: &HashMap<String, f64>);
+    async fn update_parameters(&mut self, _params: &HashMap<String, f64>) {}
+}
+
+// Blanket default implementation for any TradingStrategy
+#[async_trait]
+impl<T> AdaptiveStrategy for T
+where
+    T: TradingStrategy + Send + Sync,
+{
+    // default methods already provided above; we can leave them or override
 }
 
 #[cfg(test)]

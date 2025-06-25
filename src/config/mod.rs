@@ -1,9 +1,11 @@
 //! Configuration module for the trading bot
 
 mod template;
+pub mod position_sizer;
 
 use crate::utils::error::{Error, Result};
 use serde::{Deserialize, Serialize};
+use position_sizer::PositionSizerConfig;
 use std::fs;
 use std::env;
 use aes_gcm::{KeyInit, Aes256Gcm, Nonce};
@@ -134,6 +136,10 @@ pub struct RiskConfig {
     
     /// Default take profit percentage
     pub default_take_profit_pct: f64,
+
+    /// Optional position sizer configuration
+    #[serde(default)]
+    pub position_sizer: Option<PositionSizerConfig>,
 }
 
 /// Wallet configuration
@@ -233,12 +239,13 @@ impl Default for RiskConfig {
     fn default() -> Self {
         Self {
             max_drawdown_pct: 10.0, // 10% max drawdown
-            max_position_risk_pct: 2.0, // 2% risk per position
-            daily_loss_limit_pct: 5.0, // 5% daily loss limit
-            max_leverage: 1.0, // No leverage by default
-            stop_loss_enabled: true,
-            default_stop_loss_pct: 5.0, // 5% stop loss
-            default_take_profit_pct: 10.0, // 10% take profit
+                max_position_risk_pct: 2.0,
+                daily_loss_limit_pct: 5.0,
+                max_leverage: 1.0,
+                stop_loss_enabled: true,
+                default_stop_loss_pct: 5.0,
+                default_take_profit_pct: 10.0,
+                position_sizer: None,
         }
     }
 }

@@ -51,7 +51,7 @@ impl Wallet {
         let filters = Some(vec![solana_client::rpc_filter::RpcFilterType::Memcmp(
             solana_client::rpc_filter::Memcmp {
                 offset: 32, // owner field start
-                bytes: solana_client::rpc_filter::MemcmpEncodedBytes::Binary(self.pubkey().to_string()),
+                bytes: solana_client::rpc_filter::MemcmpEncodedBytes::Base58(self.pubkey().to_string()),
                 encoding: None,
             },
         )]);
