@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
 
 use crate::utils::indicators::{CachedIndicator, IndicatorValue, StochasticOscillator};
 use async_trait::async_trait;
@@ -323,10 +323,7 @@ impl TradingStrategy for AdvancedStrategy {
                     size: order.size,
                     entry_price: Some(order.price),
                     current_price: order.price,
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
+                    timestamp: Utc::now().timestamp(),
                     stop_loss: Some(order.price * 0.99), // 1% stop loss
                     take_profit: Some(order.price * 1.02), // 2% take profit
                     side: order.side,
