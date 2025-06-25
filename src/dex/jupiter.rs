@@ -47,6 +47,14 @@ struct Context {
     // Other context fields
 }
 
+#[derive(Debug, Deserialize)]
+struct SwapResponse {
+    #[serde(rename = "swapTransaction")]
+    swap_transaction: String,
+}
+
+use serde_json::json;
+
 impl JupiterClient {
     /// Create a new Jupiter client
     pub fn new() -> Result<Self> {
@@ -89,6 +97,29 @@ impl JupiterClient {
         
         Ok(quote)
     }
+
+    /// Fetch a base64-encoded swap transaction from Jupiter `/swap` endpoint
+    async fn get_swap_transaction(&self,
+        input_mint: &str,
+        output_mint: &str,
+        amount: u64,
+        slippage_bps: u16,
+        user_pubkey: &str,
+    ) -> Result<String> {
+        let url = "https://quote-api.jup.ag/v6/swap"; // official endpoint
+        let body = json!({
+            "inputMint": input_mint,
+            "outputMint": output_mint,
+            "inAmount": amount.to_string(),
+            "slippageBps": slippage_bps,
+            "userPublicKey": user_pubkey,
+            "wrapUnwrapSol": true,
+            "feeBps": 0u16
+        });
+        let resp = self.client.post(url).json(&body).send().await?;
+        let sr: SwapResponse = resp.json().await?;
+        Ok(sr.swap_transaction)
+    }
 }
 
 #[async_trait]
@@ -124,7 +155,7 @@ impl super::DexClient for JupiterClient {
         limit_price: Option<f64>,
         _stop_price: Option<f64>,
         _take_profit_price: Option<f64>,
-        signer: &str,
+        wallet: &crate::wallet::Wallet,
     ) -> Result<String> {
         // Handle different order types
         match order_type {
@@ -182,8 +213,18 @@ impl super::DexClient for JupiterClient {
         // 3. Send it to the network
         // 4. Return the transaction signature
         
-        // For now, return a placeholder
-        Ok("tx_signature_placeholder".to_string())
+                // Convert ui amount to lamports (assume 6 decimals typical)
+        let amount_lamports = (amount * 1_000_000.0) as u64;
+        let user_pubkey = wallet.pubkey().to_string();
+        let tx_b64 = self.get_swap_transaction(
+            if is_buy { quote_token } else { base_token },
+            if is_buy { base_token } else { quote_token },
+            amount_lamports,
+            slippage_bps,
+            &user_pubkey,
+        ).await?;
+        let sig = wallet.sign_and_send_serialized_tx(&tx_b64).await?;
+        Ok(sig.to_string())
     }
     
     async fn get_balance(&self, token: &str) -> Result<f64> {

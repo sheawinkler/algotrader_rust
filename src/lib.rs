@@ -19,15 +19,22 @@ pub mod utils;
 pub mod trading;
 pub mod engine;
 pub mod backtest;
+pub mod meta;
+pub mod risk;
+pub mod persistence;
 
 pub mod dashboard;
 pub mod market_data;
+pub mod wallet;
 
-
+// Import wallet module
+use crate::wallet::Wallet;
 
 use crate::engine::market_router::MarketRouter;
 use std::collections::HashMap;
 use crate::dex::DexFactory;
+use serde::Deserialize;
+
 use crate::strategies::TradingStrategy;
 use crate::utils::types::PendingOrder;
 use crate::performance::PerformanceMonitor;
@@ -36,13 +43,13 @@ use crate::trading::{Signal as StratSignal, SignalType};
 use tokio::sync::mpsc;
 use solana_sdk::signature::Keypair;
 use crate::analysis::wallet_analyzer::WalletAnalyzer;
+use crate::risk::{RiskRule, RiskAction};
+use crate::risk::position_sizer::{PositionSizer, FixedFractionalSizer};
 use crate::market_data::ws::{self as market_ws, PriceCache};
+use crate::persistence::{Persistence, TradeRecord, EquitySnapshot};
+use chrono::{Utc, NaiveDateTime};
 use tokio::task::JoinHandle;
 use std::sync::Arc;
-
-
-
-
 
 /// Arbitrage opportunity struct
 #[derive(Debug, Clone)]
@@ -55,17 +62,7 @@ pub struct ArbitrageOpportunity {
     pub spread: f64,
 }
 
-/// Record of a trade for analytics
-#[derive(Debug, Clone)]
-pub struct TradeRecord {
-    pub timestamp: i64,
-    pub symbol: String,
-    pub side: String,
-    pub size: f64,
-    pub price: f64,
-    pub pnl: f64,
-    pub stop_loss_triggered: bool,
-}
+
 
 /// Main trading engine that coordinates between DEX and strategies
 pub struct TradingEngine {
@@ -89,8 +86,14 @@ pub struct TradingEngine {
     pub trading_wallet: String, // For all trade execution
     pub personal_wallet: String, // For review and analytics
     pub wallet_analyzer: Option<WalletAnalyzer>,
+    // Wallet (None in paper mode)
+    pub wallet: Option<Wallet>,
     // Portfolio tracking
     pub portfolio: crate::portfolio::Portfolio,
+    // Position sizing
+    position_sizer: Box<dyn PositionSizer>,
+    // Risk management rules
+    pub risk_rules: Vec<Box<dyn crate::risk::RiskRule>>,
     // --- EXECUTION PARAMETERS ---
     pub slippage_bps: u16,
     pub max_fee_lamports: u64,
@@ -98,13 +101,14 @@ pub struct TradingEngine {
     pub split_chunk_sol: f64,
     pub split_delay_ms: u64,
     // Wallet rotation
-    pub wallet_pool: Vec<String>,
+    /// Optional pool of additional wallets for rotation
+    pub wallet_pool: Vec<crate::wallet::Wallet>,
     wallet_index: usize,
     
     // --- RISK PARAMETERS ---
     pub starting_balance: f64, // e.g. 4.0 SOL
     pub current_balance: f64,  // updated after each trade
-    pub max_position_pct: f64, // e.g. 0.05 (5% of balance, capped)
+    pub max_position_pct: f64, // kept for backward-compat but superseded by sizer
     pub max_position_abs: f64, // e.g. 0.2 SOL cap
     pub max_open_trades: usize, // e.g. 3
     pub stop_loss_pct: f64, // e.g. 0.10 (10% SL)
@@ -113,6 +117,7 @@ pub struct TradingEngine {
     pub open_trades: usize, // tracked live
     pub trade_history: Vec<TradeRecord>, // for analytics
     pub open_positions: std::collections::HashMap<String, (f64, f64)>,
+
     // --- MARKET DATA CACHE ---
     pub price_cache: PriceCache,
     price_feed_handle: Option<JoinHandle<()>>,
@@ -121,6 +126,8 @@ pub struct TradingEngine {
     scheduler_handle: Option<JoinHandle<()>>,
     dashboard_handle: Option<JoinHandle<()>>,
     dashboard_state: Option<crate::dashboard::SharedSnapshot>,
+    /// Persistence backend (sqlite or null)
+    pub persistence: std::sync::Arc<dyn Persistence + Send + Sync>,
     retry_tx: tokio::sync::mpsc::UnboundedSender<crate::utils::types::PendingOrder>,
     retry_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::utils::types::PendingOrder>>,
     
@@ -137,10 +144,34 @@ impl TradingEngine {
     }
     /// Create a new trading engine with the given configuration
     pub fn new() -> Self {
-        Self::with_config(crate::config::Config::default(), false)
+         tokio::runtime::Runtime::new().unwrap().block_on(Self::with_config_async(crate::config::Config::default(), false))
     }
     /// Construct engine from configuration
-    pub fn with_config(config: crate::config::Config, paper_trading: bool) -> Self {
+     pub async fn with_config_async(config: crate::config::Config, paper_trading: bool) -> Self {
+
+        use solana_client::nonblocking::rpc_client::RpcClient;
+        use solana_sdk::signature::{Signer, Keypair};
+        use bs58;
+        // Build position sizer from config
+        use crate::risk::position_sizer::{KellySizer, VolatilitySizer, LiveKellySizer};
+        use crate::config::position_sizer::PositionSizerConfig;
+        let position_sizer: Box<dyn PositionSizer> = match &config.risk.position_sizer {
+            Some(PositionSizerConfig::FixedFractional { pct }) => Box::new(FixedFractionalSizer::new(*pct)),
+            Some(PositionSizerConfig::Kelly { win_rate, payoff_ratio, cap }) => Box::new(KellySizer::new(*win_rate, *payoff_ratio, *cap)),
+            Some(PositionSizerConfig::KellyLive { cap }) => {
+                use std::sync::Arc;
+                use crate::performance::PerformanceMonitor;
+                let pm = Arc::new(PerformanceMonitor::new());
+                Box::new(LiveKellySizer::new(*cap, pm))
+            }
+            Some(PositionSizerConfig::Volatility { risk_pct, atr_mult }) => {
+                // Live ATR fetcher from global cache
+                let fetcher = |sym: &str| -> Option<f64> { crate::utils::atr_cache::get(sym) };
+                Box::new(VolatilitySizer::new(*risk_pct, *atr_mult, fetcher))
+            }
+            None => Box::new(FixedFractionalSizer::new(0.01)),
+        };
+
         // Build strategies first
         // Extract execution parameters before moving config
         let slippage_bps = config.trading.slippage_bps;
@@ -148,7 +179,29 @@ impl TradingEngine {
         let split_threshold_sol = config.trading.split_threshold_sol;
         let split_chunk_sol = config.trading.split_chunk_sol;
         let split_delay_ms = config.trading.split_delay_ms;
-        let wallet_pool = config.wallet.wallets.clone();
+                // Build wallet rotation pool
+        let mut wallet_pool: Vec<Wallet> = Vec::new();
+        if !paper_trading {
+            // instantiate new RpcClient for each wallet below
+            for secret in &config.wallet.wallets {
+                if let Ok(bytes) = bs58::decode(secret.trim()).into_vec() {
+                    if let Ok(kp) = Keypair::from_bytes(&bytes) {
+                        wallet_pool.push(Wallet::new(RpcClient::new(config.solana.rpc_url.clone()), kp));
+                    } else {
+                        log::warn!("Failed to parse keypair bytes in wallet pool");
+                    }
+                } else {
+                    log::warn!("Failed to decode base58 private key in wallet pool");
+                }
+            }
+        }
+        // Build persistence (TODO: load backend choice from config)
+        use crate::persistence::sqlite::SqlitePersistence;
+        let persistence: std::sync::Arc<dyn Persistence + Send + Sync> = match SqlitePersistence::new(None).await {
+            Ok(db) => std::sync::Arc::new(db),
+            Err(_) => std::sync::Arc::new(crate::persistence::NullPersistence::default()),
+        };
+
         let mut strategies_vec: Vec<Box<dyn crate::strategies::TradingStrategy>> = Vec::new();
         for scfg in &config.trading.strategies {
             if scfg.enabled {
@@ -171,7 +224,24 @@ impl TradingEngine {
         }
         let price_feed_handle = market_ws::spawn_price_feed(&price_pairs, price_cache.clone());
         let starting_cash = config.trading.starting_balance_usd;
+        let wallet_instance = if !paper_trading {
+            match config.load_keypair() {
+                Ok(kp) => {
+                    let rpc = RpcClient::new(config.solana.rpc_url.clone());
+                    Some(Wallet::new(rpc, kp))
+                }
+                Err(e) => {
+                    log::error!("Failed to load keypair: {e}. Running in paper mode");
+                    None
+                }
+            }
+        } else { None };
+
         let portfolio = crate::portfolio::Portfolio::new(starting_cash);
+        let risk_rules: Vec<Box<dyn crate::risk::RiskRule>> = vec![
+            Box::new(crate::risk::StopLossRule::new(0.05)),
+            Box::new(crate::risk::TakeProfitRule::new(0.10)),
+        ];
         let pending_orders: Arc<tokio::sync::Mutex<Vec<crate::utils::types::PendingOrder>>> = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let (retry_tx, retry_rx) = tokio::sync::mpsc::unbounded_channel::<crate::utils::types::PendingOrder>();
         // Start dashboard server if feature enabled
@@ -247,6 +317,8 @@ impl TradingEngine {
             open_trades: 0,
             trade_history: Vec::new(),
             open_positions: std::collections::HashMap::new(),
+            position_sizer,
+
             portfolio,
             price_cache,
             price_feed_handle: Some(price_feed_handle),
@@ -254,6 +326,7 @@ impl TradingEngine {
              scheduler_handle: Some(scheduler_handle),
               dashboard_handle: dashboard_handle_opt,
               dashboard_state: dashboard_state_opt,
+             persistence: persistence.clone(),
              retry_tx,
              retry_rx: Some(retry_rx),
             slippage_bps,
@@ -265,6 +338,8 @@ impl TradingEngine {
             wallet_index: 0,
             paper_trading,
             enable_arbitrage: false,
+            risk_rules,
+            wallet: wallet_instance,
         }
     }
 
@@ -275,13 +350,14 @@ impl TradingEngine {
     }
 
     /// Rotate to next wallet in the configured pool. Returns Some(wallet) or None if pool empty.
-    pub fn next_wallet(&mut self) -> Option<String> {
+    /// Rotate to next wallet in the pool (round-robin) and return a reference.
+    pub fn next_wallet(&mut self) -> Option<crate::wallet::Wallet> {
         if self.wallet_pool.is_empty() {
             return None;
         }
-        let w = self.wallet_pool[self.wallet_index % self.wallet_pool.len()].clone();
+                let idx = self.wallet_index % self.wallet_pool.len();
         self.wallet_index = (self.wallet_index + 1) % self.wallet_pool.len();
-        Some(w)
+        Some(self.wallet_pool[idx].clone())
     }
 
     /// Start the trading engine with market data orchestrator
@@ -365,8 +441,22 @@ impl TradingEngine {
 }
 
 impl TradingEngine {
-        #[cfg(feature = "dashboard")]
+    
     async fn update_dashboard_snapshot(&self) {
+         // Persist equity snapshot
+         let snap_equity = {
+             let cache = self.price_cache.read().await;
+             let price_lookup = |pair: &crate::utils::types::TradingPair| cache.get(pair).cloned();
+             self.portfolio.total_usd_value(&price_lookup)
+         };
+         let snapshot = EquitySnapshot {
+             id: None,
+             timestamp: Utc::now().naive_utc(),
+             equity: snap_equity,
+         };
+         let _ = self.persistence.save_snapshot(&snapshot).await;
+
+         #[cfg(feature = "dashboard")]
         if let Some(state) = &self.dashboard_state {
             // Hold a read lock on the price cache for consistent snapshot
             let cache = self.price_cache.read().await;
@@ -379,8 +469,7 @@ impl TradingEngine {
         }
     }
 
-    #[cfg(not(feature = "dashboard"))]
-    async fn update_dashboard_snapshot(&self) {}
+
 
     /// Enforce risk parameters and dynamic scaling
     /// Sync Solana wallet balance into portfolio cash based on live SOL price
@@ -479,10 +568,32 @@ impl TradingEngine {
         // Update daily loss (USD cash for now)
         self.daily_loss = (self.starting_balance - self.current_balance).max(0.0);
 
+        // Evaluate risk after trade
+        self.evaluate_risk_rules();
+
         pnl
     }
 
-
+    /// Evaluate risk rules
+    pub fn evaluate_risk_rules(&mut self) {
+        let cache_guard = self.price_cache.try_read();
+        if cache_guard.is_err() { return; }
+        let cache = cache_guard.unwrap();
+        let positions_snapshot = self.portfolio.positions.clone();
+        for (sym, pos) in positions_snapshot {
+            if pos.size <= 0.0 { continue; }
+            if let Some(pair) = TradingPair::from_str(&sym) {
+                if let Some(price) = cache.get(&pair) {
+                    for rule in &self.risk_rules {
+                        if let Some(RiskAction::ClosePosition) = rule.evaluate(&sym, &pos, *price) {
+                            let _ = self.portfolio.update_on_sell(&sym, pos.size, *price);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     /// Return total equity in USD (cash + unrealized)
     pub fn equity_usd(&self) -> f64 {
@@ -644,7 +755,7 @@ impl TradingEngine {
             stop_price: sig.stop_price,
             stop_loss: None,
             take_profit: None,
-            timestamp: sig.timestamp,
+            timestamp: sig.timestamp as i64,
             metadata: std::collections::HashMap::new(),
         })
     }
@@ -666,7 +777,7 @@ impl TradingEngine {
         let mut executed = false;
         for dex_name in preferred.iter() {
             if let Some(dex) = self.dex_clients.get(dex_name) {
-                match dex.execute_trade(&po.pair.base, &po.pair.quote, po.amount, po.is_buy, self.slippage_bps, self.max_fee_lamports, new_order_type, po.limit_price, None, None, &po.wallet).await {
+                match dex.execute_trade(&po.pair.base, &po.pair.quote, po.amount, po.is_buy, self.slippage_bps, self.max_fee_lamports, new_order_type, po.limit_price, None, None, self.wallet.as_ref().expect("wallet not available")).await {
                     Ok(_) => { executed = true; break; },
                     Err(e) => { log::warn!("Retry {} failed: {}", dex_name, e); continue; }
                 }
@@ -690,8 +801,9 @@ impl TradingEngine {
                 log::warn!("Daily loss limit reached – signal ignored: {:?}", sig);
                 continue;
             }
-            // Decide amount: simple fixed % of balance
-            let chunk = (self.current_balance * self.max_position_pct).min(self.max_position_abs);
+            // Decide amount via configurable position sizer
+            let mut chunk = self.position_sizer.size(self.current_balance, &sig.pair.base).await;
+            if chunk > self.max_position_abs { chunk = self.max_position_abs; }
             // Determine trade splitting based on config and strategy type
             let mut trade_chunks: Vec<f64> = Vec::new();
             if chunk > self.split_threshold_sol && !sig.strategy_id.to_lowercase().contains("arbitrage") {
@@ -709,7 +821,10 @@ impl TradingEngine {
             }
             // Attempt trade on available DEX clients in preferred order
             // Determine signer wallet using rotation (falls back to trading_wallet)
-            let wallet = self.next_wallet().unwrap_or_else(|| self.trading_wallet.clone());
+            let wallet_ref = self.next_wallet().unwrap_or_else(|| {
+                self.wallet.clone().expect("wallet not available for live trading")
+            });
+
             let mut total_pnl_chunked = 0.0;
             for &chunk in trade_chunks.iter() {
             if !self.paper_trading {
@@ -719,22 +834,32 @@ impl TradingEngine {
                 for dex_name in preferred.iter() {
                     if let Some(dex) = self.dex_clients.get(*dex_name) {
                         match dex.execute_trade(
-                                &sig.pair.base,
-                                &sig.pair.quote,
-                                chunk,
-                                matches!(sig.action, crate::utils::types::SignalAction::Buy),
-                                self.slippage_bps,
+                                 &sig.pair.base,
+                                 &sig.pair.quote,
+                                 chunk,
+                                 matches!(sig.action, crate::utils::types::SignalAction::Buy),
+                                 self.slippage_bps,
                                  self.max_fee_lamports,
                                  sig.order_type,
                                  sig.limit_price,
                                  sig.stop_price,
                                  None,
-                                 &wallet,
+                                 &wallet_ref,
                              ).await {
                                  Ok(_) => {
-                                     executed = true;
-                                     break;
-                                 }
+                                // Persist trade record (pnl unknown at entry)
+                                let rec = TradeRecord {
+                                    id: None,
+                                    timestamp: Utc::now().naive_utc(),
+                                    symbol: sig.pair.to_string(),
+                                    side: if matches!(sig.action, crate::utils::types::SignalAction::Buy) { "buy".into() } else { "sell".into() },
+                                    qty: chunk,
+                                    price: sig.price,
+                                    pnl: 0.0,
+                                };
+                                let _ = self.persistence.save_trade(&rec).await;
+                                executed = true; break;
+                            },
                                  Err(e) => {
                                      log::warn!("{} execution failed: {}", dex_name, e);
                                      last_err = Some(e.into());
@@ -753,37 +878,17 @@ impl TradingEngine {
                                     is_buy: matches!(sig.action, crate::utils::types::SignalAction::Buy),
                                     order_type: sig.order_type,
                                     limit_price: sig.limit_price,
-                                    stop_price: None,
-                                    wallet: wallet.clone(),
-                                    dex_preference: preferred.iter().map(|s| s.to_string()).collect(),
+                                    stop_price: sig.stop_price,
+                                    wallet: String::new(),
+                                    dex_preference: Vec::new(),
                                     timestamp: sig.timestamp,
                                 };
-                                {
-                                    let mut guard = self.pending_orders.lock().await;
-                                    guard.push(po.clone());
-                                }
-                                log::info!("Queued pending stop order: {:?}", po);
-                            }
                         }
                     }
-                    log::error!("All DEX clients failed to execute trade for {:?}", sig);
-                    if let Some(strat) = self.strategies.iter_mut().find(|s| s.name() == sig.strategy_id) {
-                        let failed_order = Order {
-                            id: "".into(),
-                            symbol: sig.pair.to_string(),
-                            price: sig.price,
-                            size: chunk,
-                            side: if sig.action == SignalAction::Buy { OrderSide::Buy } else { OrderSide::Sell },
-                            order_type: crate::utils::types::OrderType::Market,
-                            timestamp: sig.timestamp,
-                        };
-                        let err_anyhow: anyhow::Error = last_err.unwrap_or_else(|| anyhow::anyhow!("Unknown DEX error"));
-                        strat.on_trade_error(&failed_order, &err_anyhow);
-                    }
-                    continue; // skip state update on failure
                 }
             } else {
                 log::info!("[PAPER] would execute trade: {:?}", sig);
+            }
             }
             // bookkeeping per chunk
                 let pnl_chunk = self.apply_trade_effects(&sig, chunk);
@@ -807,13 +912,13 @@ impl TradingEngine {
                 }
                 // Append history
                 self.trade_history.push(TradeRecord {
-                    timestamp: sig.timestamp,
+                    id: None,
+                    timestamp: chrono::NaiveDateTime::from_timestamp(sig.timestamp, 0),
                     symbol: sig.pair.to_string(),
                     side: match sig.action { SignalAction::Buy => "buy".into(), SignalAction::Sell => "sell".into(), _ => "other".into() },
-                    size: chunk,
+                    qty: chunk,
                     price: sig.price,
                     pnl: pnl_chunk,
-                    stop_loss_triggered: false,
                 });
                 total_pnl_chunked += pnl_chunk;
             }
@@ -865,39 +970,29 @@ impl TradingEngine {
             // Construct order record
             let order = Order {
                 id: format!("{}-{}", sig.strategy_id, sig.timestamp),
-                symbol: symbol_key.clone(),
+                symbol: sig.pair.to_string(),
                 price: sig.price,
                 size: chunk,
                 side: if sig.action == SignalAction::Buy { OrderSide::Buy } else { OrderSide::Sell },
                 order_type: crate::utils::types::OrderType::Market,
                 timestamp: sig.timestamp,
             };
-            // Call performance monitor if exists
-            if let Some(mon) = self.performance_monitors.get(&sig.strategy_id) {
-                let _ = mon.record_trade(&sig.strategy_id, &order, None,  pnl_chunk, 0.0001, None).await;
-            }
             // Notify strategy
             if let Some(strat) = self.strategies.iter_mut().find(|s| s.name() == sig.strategy_id) {
                 strat.on_order_filled(&order);
             }
             // Append history
             self.trade_history.push(TradeRecord {
-                    timestamp: sig.timestamp,
+                    id: None,
+                    timestamp: chrono::NaiveDateTime::from_timestamp(sig.timestamp, 0),
                     symbol: sig.pair.to_string(),
                     side: match sig.action { SignalAction::Buy => "buy".into(), SignalAction::Sell => "sell".into(), _ => "other".into() },
-                    size: chunk,
+                    qty: chunk,
                     price: sig.price,
                     pnl: pnl_chunk,
-                    stop_loss_triggered: false,
                 });
                 total_pnl_chunked += pnl_chunk;
-                timestamp: sig.timestamp,
-                symbol: sig.pair.to_string(),
-                side: match sig.action { SignalAction::Buy => "buy".into(), SignalAction::Sell => "sell".into(), _ => "other".into() },
-                },
-                size: chunk,
-                price: sig.price,
-                
+{{ ... }}
 
 */
         Ok(())

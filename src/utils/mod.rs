@@ -8,13 +8,14 @@ mod logging;
 pub mod types;
 pub mod websocket;
 pub mod market_stream;
-pub mod indicator_ext;
 pub mod binance_stream;
 pub mod coinbase_stream;
 pub mod kraken_stream;
 pub mod serum_stream;
 pub mod helius_stream;
 pub mod triton_stream;
+pub mod indicators;
+pub mod atr_cache;
 
 #[cfg(feature = "legacy_config")]
 pub use config::Config;
@@ -32,6 +33,8 @@ pub mod prelude {
         fs::*,
         logging::init_logging,
         types::*,
+        indicators::*,
+
     };
 }
 

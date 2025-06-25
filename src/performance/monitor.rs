@@ -524,6 +524,12 @@ impl PerformanceMonitor {
         Ok(summary)
     }
     
+    /// Return a snapshot clone of all strategy metrics
+    pub async fn metrics_snapshot(&self) -> Vec<StrategyMetrics> {
+        let guard = self.metrics.read().await;
+        guard.values().cloned().collect()
+    }
+
     /// Get correlation matrix for all strategies
     pub async fn get_correlation_matrix(&self) -> Result<HashMap<String, HashMap<String, f64>>> {
         let matrix_guard = self.correlation_matrix.lock().await;

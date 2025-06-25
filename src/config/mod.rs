@@ -1,11 +1,16 @@
 //! Configuration module for the trading bot
 
 mod template;
+pub mod position_sizer;
 
 use crate::utils::error::{Error, Result};
 use serde::{Deserialize, Serialize};
+use position_sizer::PositionSizerConfig;
 use std::fs;
 use std::env;
+use aes_gcm::{KeyInit, Aes256Gcm, Nonce};
+use aes_gcm::aead::Aead;
+use sha2::{Digest, Sha256};
 use solana_sdk::signature::Keypair;
 
 pub use template::{generate_config_template, generate_commented_config_template};
@@ -131,6 +136,10 @@ pub struct RiskConfig {
     
     /// Default take profit percentage
     pub default_take_profit_pct: f64,
+
+    /// Optional position sizer configuration
+    #[serde(default)]
+    pub position_sizer: Option<PositionSizerConfig>,
 }
 
 /// Wallet configuration
@@ -230,12 +239,13 @@ impl Default for RiskConfig {
     fn default() -> Self {
         Self {
             max_drawdown_pct: 10.0, // 10% max drawdown
-            max_position_risk_pct: 2.0, // 2% risk per position
-            daily_loss_limit_pct: 5.0, // 5% daily loss limit
-            max_leverage: 1.0, // No leverage by default
-            stop_loss_enabled: true,
-            default_stop_loss_pct: 5.0, // 5% stop loss
-            default_take_profit_pct: 10.0, // 10% take profit
+                max_position_risk_pct: 2.0,
+                daily_loss_limit_pct: 5.0,
+                max_leverage: 1.0,
+                stop_loss_enabled: true,
+                default_stop_loss_pct: 5.0,
+                default_take_profit_pct: 10.0,
+                position_sizer: None,
         }
     }
 }
@@ -374,6 +384,11 @@ impl Config {
             self.wallet.private_key = Some(private_key);
         }
         
+        // Priority env var override for absolute keypair path
+        if let Ok(env_keypair) = env::var("SOLANA_KEYPAIR") {
+            self.wallet.keypair_path = Some(env_keypair);
+        }
+        
         if let Ok(keypair_path) = env::var("WALLET_KEYPAIR_PATH") {
             self.wallet.keypair_path = Some(keypair_path);
         }
@@ -381,7 +396,27 @@ impl Config {
         Ok(())
     }
     
-    /// Load the wallet keypair
+    
+    /// Decrypt an AES-256-GCM encrypted keypair file. The file format is assumed to be:
+    /// [12 bytes nonce][ciphertext...]. The key is derived as SHA-256(passphrase).
+    pub fn decrypt_keyfile<P: AsRef<std::path::Path>>(path: P, passphrase: &str) -> Result<Vec<u8>> {
+        use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+        use aes_gcm::aead::Aead;
+        use sha2::{Sha256, Digest};
+        use std::fs;
+
+        let data = fs::read(path)?;
+        if data.len() < 13 {
+            return Err(Error::WalletError("Encrypted keyfile too short".into()));
+        }
+        let (nonce_bytes, cipher_bytes) = data.split_at(12);
+        let key = Sha256::digest(passphrase.as_bytes());
+        let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| Error::WalletError(format!("AES init error: {e}")))?;
+        let nonce = Nonce::from_slice(nonce_bytes);
+        let plaintext = cipher.decrypt(nonce, cipher_bytes.as_ref()).map_err(|e| Error::WalletError(format!("Decrypt error: {e}")))?;
+        Ok(plaintext)
+    }
+
     pub fn load_keypair(&self) -> Result<Keypair> {
         // Try to load from private key first
         if let Some(ref private_key) = self.wallet.private_key {
@@ -405,6 +440,16 @@ impl Config {
                 Err(_) => { /* fallthrough to raw bytes */ }
             }
 
+            // If encrypted file (ends with .enc) attempt decryption first
+            if keypair_path.ends_with(".enc") {
+                if let Ok(pass) = env::var("KEYFILE_PASSPHRASE") {
+                    if let Ok(decrypted) = Self::decrypt_keyfile(keypair_path, &pass) {
+                        if let Ok(kp) = Keypair::from_bytes(&decrypted) {
+                            return Ok(kp);
+                        }
+                    }
+                }
+            }
             // Fallback: treat file contents as raw 64-byte keypair bytes
             let keypair_bytes = fs::read(keypair_path)?;
             let keypair = Keypair::from_bytes(&keypair_bytes)

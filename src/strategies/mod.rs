@@ -10,6 +10,10 @@ mod meme_arbitrage;
 mod performance_aware;
 mod momentum;
 mod bundle_sniper;
+mod meta;
+mod allocation;
+mod param_tuner;
+pub mod registry;
 mod config_impls;
 
 pub use advanced::AdvancedStrategy;
@@ -20,6 +24,9 @@ pub use meme_arbitrage::MemeArbitrageStrategy;
 pub use performance_aware::{PerformanceAwareStrategy, AdaptiveStrategy};
 pub use momentum::MomentumStrategy;
 pub use bundle_sniper::BundleSniperStrategy;
+pub use meta::EnsembleStrategy;
+pub use allocation::AllocationStrategy;
+pub use param_tuner::ParamTuner;
 
 #[cfg(feature = "ml")]
 pub use ml_strategy::MLStrategy;
@@ -34,6 +41,8 @@ pub use crate::performance::{
 
 use std::error::Error;
 use async_trait::async_trait;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::trading::{MarketData, Signal, Position, Order};
@@ -58,24 +67,35 @@ pub trait TradingStrategy: Send + Sync {
     fn on_order_filled(&mut self, _order: &Order) { }
     /// Handle trade execution errors (default no-op)
     fn on_trade_error(&mut self, _order: &Order, _err: &anyhow::Error) { }
+
+    /// Update parameters at runtime (default no-op).
+    fn update_params(&mut self, _params: &serde_json::Value) { }
     
     /// Get current positions
     fn get_positions(&self) -> Vec<&Position>;
+    /// Downcast helper for dynamic typing
+    fn as_any(&self) -> &dyn std::any::Any where Self: 'static + Sized { self }
 }
 
-// Allow Box<dyn TradingStrategy> to itself satisfy TradingStrategy by delegating
+// Trait enabling cloning of boxed strategies
 #[async_trait]
-impl<T: TradingStrategy + ?Sized> TradingStrategy for Box<T> {
-    fn name(&self) -> &str { (**self).name() }
-    fn timeframe(&self) -> TimeFrame { (**self).timeframe() }
-    fn symbols(&self) -> Vec<String> { (**self).symbols() }
-    async fn generate_signals(&mut self, market_data: &MarketData) -> Vec<Signal> {
-        (**self).generate_signals(market_data).await
-    }
-    fn on_order_filled(&mut self, order: &Order) { (**self).on_order_filled(order); }
-    fn on_trade_error(&mut self, order: &Order, err: &anyhow::Error) { (**self).on_trade_error(order, err); }
-    fn get_positions(&self) -> Vec<&Position> { (**self).get_positions() }
+pub trait TradingStrategyClone: TradingStrategy {
+    fn box_clone(&self) -> Box<dyn TradingStrategy>;
 }
+
+impl<T> TradingStrategyClone for T
+where
+    T: TradingStrategy + Clone + 'static,
+{
+    fn box_clone(&self) -> Box<dyn TradingStrategy> {
+        Box::new(self.clone())
+    }
+}
+
+// Removed custom Clone impl; use box_clone directly where needed
+
+
+// blanket impl for Box<T> was removed; trait objects are used directly
 
 /// Time frame for the strategy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -147,6 +167,45 @@ impl StrategyFactory {
 #[cfg(feature = "perf")] use std::collections::HashMap;
         let strategy: Box<dyn TradingStrategy> = match name {
             "advanced" => Box::new(AdvancedStrategy::try_from(config)?),
+            "allocation" => {
+                // params: { "subs": ["s1","s2"], "weights": [0.6,0.4] }
+                let val = config.params.clone();
+                let subs: Vec<String> = val.get("subs").and_then(|v| serde_json::from_value(v.clone()).ok()).ok_or("allocation subs missing")?;
+                let weights: Vec<f64> = val.get("weights").and_then(|v| serde_json::from_value(v.clone()).ok()).ok_or("allocation weights missing")?;
+                if subs.len()!=weights.len() { return Err("weights length mismatch".into()); }
+                let mut sub_boxes = Vec::new();
+                use serde_json::json;
+                for n in &subs {
+                    let dummy = StrategyConfig{ name:n.clone(), enabled:true, params: json!({}), performance: None };
+                    sub_boxes.push(StrategyFactory::create_strategy(n, &dummy)?);
+                }
+                Box::new(AllocationStrategy::new(name, sub_boxes, weights))
+            }
+            "ensemble" | "meta" => {
+                // Expected params: list of strategy names to include
+                let names: Vec<String> = serde_json::from_value(config.params.clone())
+                    .map_err(|e| format!("Invalid ensemble params: {}", e))?;
+                // Recursively create sub strategies using factory
+                let mut subs: Vec<Box<dyn TradingStrategy>> = Vec::new();
+                use serde_json::json;
+                for n in names {
+                    if n.eq_ignore_ascii_case("ensemble") || n.eq_ignore_ascii_case("meta") {
+                        return Err("Nested ensemble strategies are not supported".into());
+                    }
+                    // Build a minimal StrategyConfig with empty params; users should pass full configs in TOML for production.
+                    let dummy_cfg = StrategyConfig {
+                        name: n.clone(),
+                        enabled: true,
+                        params: json!({}),
+                        performance: None,
+                    };
+                    match StrategyFactory::create_strategy(&n, &dummy_cfg) {
+                        Ok(s) => subs.push(s),
+                        Err(e) => return Err(format!("Failed to create sub-strategy {}: {}", n, e).into()),
+                    }
+                }
+                Box::new(EnsembleStrategy::new(name, subs))
+            }
             "mean_reversion" => Box::new(MeanReversionStrategy::try_from(config)?),
             "trend_following" => Box::new(TrendFollowingStrategy::try_from(config)?),
             "order_flow" => Box::new(OrderFlowStrategy::try_from(config)?),

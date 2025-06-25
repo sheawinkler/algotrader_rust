@@ -1,6 +1,9 @@
 //! Command-line interface for the AlgoTraderV2 trading bot
 
 use clap::{Parser, Subcommand};
+use clap::ValueEnum;
+use crate::backtest::SimMode;
+use crate::backtest;
 use std::path::PathBuf;
 use anyhow::Result;
 use crate::config;
@@ -52,6 +55,48 @@ pub enum Commands {
         command: WalletCommands,
     },
     
+    /// Run a simple CSV backtest
+    Backtest {
+        /// Path to CSV market data file
+        #[arg(short, long, value_name = "FILE")]
+        data: PathBuf,
+
+        /// Timeframe string e.g. 1m, 1h or "tick" for raw tick simulation
+        #[arg(short = 't', long, default_value = "1h", value_name="TF")]
+        timeframe: String,
+
+        /// Simulation mode: bar (default) or tick
+        #[arg(long, value_enum, default_value = "bar", value_name="MODE")]
+        sim_mode: SimMode,
+    },
+
+    /// Run walk-forward optimization
+    WalkForward {
+        /// Path to CSV market data file
+        #[arg(short, long, value_name = "FILE")]
+        data: PathBuf,
+
+        /// Timeframe string e.g. 1h
+        #[arg(short = 't', long, default_value = "1h", value_name="TF")]
+        timeframe: String,
+
+        /// Simulation mode: bar (default) or tick
+        #[arg(long, value_enum, default_value = "bar", value_name="MODE")]
+        sim_mode: crate::backtest::SimMode,
+
+        /// Training window length in days
+        #[arg(long, default_value_t = 90)]
+        train: i64,
+
+        /// Test window length in days
+        #[arg(long, default_value_t = 30)]
+        test: i64,
+
+        /// Step size between windows in days
+        #[arg(long, default_value_t = 30)]
+        step: i64,
+    },
+
     /// Show version information
     Version,
 }
@@ -85,10 +130,18 @@ impl Cli {
     }
     
     /// Execute the CLI command
-    pub async fn execute(self) -> Result<()> {
+    async fn execute(self) -> Result<()> {
         match self.command {
             Commands::Start { config, debug } => {
                 self.handle_start(config, debug).await
+            }
+            Commands::Backtest { data, timeframe, sim_mode } => {
+                let path = data;
+                if !path.exists() {
+                    anyhow::bail!("Data file not found: {}", path.display());
+                }
+                println!("Running backtest on {}...", path.display());
+                crate::backtest::simple_backtest(&path, &timeframe, sim_mode, None).await
             }
             Commands::Init { output, commented } => {
                 self.handle_init(output, commented)
@@ -98,6 +151,20 @@ impl Cli {
             }
             Commands::Wallet { command } => {
                 self.handle_wallet(command).await
+            }
+            Commands::WalkForward { data, timeframe, sim_mode, train, test, step } => {
+                if !data.exists() { anyhow::bail!("Data file not found: {}", data.display()); }
+                println!("Running walk-forward optimization on {}...", data.display());
+                let cfg = crate::backtest::harness::WalkForwardConfig { train_days: train, test_days: test, step_days: step };
+                let reports = crate::backtest::harness::run_walk_forward(&data, &timeframe, sim_mode, cfg).await?;
+                if reports.is_empty() {
+                    println!("No reports generated (perhaps insufficient data)");
+                } else {
+                    let avg_sharpe: f64 = reports.iter().map(|r| r.sharpe).sum::<f64>() / reports.len() as f64;
+                    let total_return = (reports.last().unwrap().ending_balance / reports.first().unwrap().starting_balance - 1.0) * 100.0;
+                    println!("Walk-forward completed: {} windows, Avg Sharpe {:.2}, Total Return {:.1}%", reports.len(), avg_sharpe, total_return);
+                }
+                Ok(())
             }
             Commands::Version => {
                 self.handle_version()
@@ -166,6 +233,16 @@ impl Cli {
         }
     }
     
+    async fn handle_backtest(&self, data_path: PathBuf, timeframe: String) -> Result<()> {
+        // Use the CSV provider for now
+        let path = data_path;
+        if !path.exists() {
+            anyhow::bail!("Data file not found: {}", path.display());
+        }
+        println!("Running backtest on {}...", path.display());
+        crate::backtest::simple_backtest(&path, &timeframe, sim_mode, None).await
+    }
+
     async fn handle_wallet(&self, command: WalletCommands) -> Result<()> {
         match command {
             WalletCommands::Info { config } => {

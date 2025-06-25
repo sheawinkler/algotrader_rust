@@ -10,12 +10,12 @@ use ta::{
     },
     Next, DataItem,
 };
-use crate::indicators::StochasticOscillator;
+use crate::utils::indicators::{StochasticOscillator, IndicatorValue, CachedIndicator};
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
 use crate::utils::types::MarketRegime;
-use crate::utils::indicator_ext::IndicatorValue;
+
 use super::{TradingStrategy, TimeFrame};
 
 /// Advanced trading strategy that combines multiple indicators and adapts to market conditions
@@ -31,9 +31,9 @@ pub struct AdvancedStrategy {
     kc: KeltnerChannel,
     mfi: MoneyFlowIndex,
     stoch: StochasticOscillator,
-    atr: AverageTrueRange,
-    fast_ema: ExponentialMovingAverage,
-    slow_ema: ExponentialMovingAverage,
+    atr: CachedIndicator<AverageTrueRange>,
+    fast_ema: CachedIndicator<ExponentialMovingAverage>,
+    slow_ema: CachedIndicator<ExponentialMovingAverage>,
     
     // State
     last_signal: Option<Signal>,
@@ -66,10 +66,10 @@ impl AdvancedStrategy {
             bb: BollingerBands::new(bb_period, bb_multiplier).unwrap(),
             kc: KeltnerChannel::new(kc_period, kc_multiplier).unwrap(),
             mfi: MoneyFlowIndex::new(mfi_period).unwrap(),
-            stoch: StochasticOscillator::new(stoch_period, 3, 3).unwrap(),
-            atr: AverageTrueRange::new(atr_period).unwrap(),
-            fast_ema: ExponentialMovingAverage::new(9).unwrap(),
-            slow_ema: ExponentialMovingAverage::new(21).unwrap(),
+            stoch: StochasticOscillator::new(stoch_period, 3, 3),
+            atr: CachedIndicator::new(AverageTrueRange::new(atr_period).unwrap()),
+            fast_ema: CachedIndicator::new(ExponentialMovingAverage::new(9).unwrap()),
+            slow_ema: CachedIndicator::new(ExponentialMovingAverage::new(21).unwrap()),
             last_signal: None,
             position: None,
             recent_prices: VecDeque::with_capacity(window_size * 2),
@@ -120,13 +120,6 @@ impl AdvancedStrategy {
         }
     }
     
-    /// Calculate position size based on risk management rules
-    fn calculate_position_size(&self, price: f64, account_balance: f64, risk_percent: f64) -> f64 {
-        let atr = IndicatorValue::value(&self.atr);
-        let risk_amount = account_balance * (risk_percent / 100.0);
-        let position_size = risk_amount / (atr * 2.0); // Use 2x ATR for position sizing
-        position_size.max(0.0)
-    }
 }
 
 #[async_trait]
@@ -163,6 +156,8 @@ impl TradingStrategy for AdvancedStrategy {
         let mfi = self.mfi.next(&item);
         let stoch = self.stoch.next(&item);
         let atr = self.atr.next(&item);
+        // update global ATR cache
+        crate::utils::atr_cache::update(&self.symbol, atr);
         let fast_ema = self.fast_ema.next(market_data.close);
         let slow_ema = self.slow_ema.next(market_data.close);
         
@@ -177,7 +172,7 @@ impl TradingStrategy for AdvancedStrategy {
                     signals.push(Signal {
                         symbol: self.symbol.clone(),
                         signal_type: SignalType::Buy,
-                        size: 1.0,
+                        size: 0.0,
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
@@ -201,7 +196,7 @@ impl TradingStrategy for AdvancedStrategy {
                     signals.push(Signal {
                         symbol: self.symbol.clone(),
                         signal_type: SignalType::Sell,
-                        size: 1.0,
+                        size: 0.0,
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
@@ -225,7 +220,7 @@ impl TradingStrategy for AdvancedStrategy {
                     signals.push(Signal {
                         symbol: self.symbol.clone(),
                         signal_type: SignalType::Buy,
-                        size: 1.0,
+                        size: 0.0,
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
@@ -244,7 +239,7 @@ impl TradingStrategy for AdvancedStrategy {
                     signals.push(Signal {
                         symbol: self.symbol.clone(),
                         signal_type: SignalType::Sell,
-                        size: 1.0,
+                        size: 0.0,
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
@@ -267,7 +262,7 @@ impl TradingStrategy for AdvancedStrategy {
                     signals.push(Signal {
                         symbol: self.symbol.clone(),
                         signal_type: SignalType::Buy,
-                        size: 1.0,
+                        size: 0.0,
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,
@@ -286,7 +281,7 @@ impl TradingStrategy for AdvancedStrategy {
                     signals.push(Signal {
                         symbol: self.symbol.clone(),
                         signal_type: SignalType::Sell,
-                        size: 1.0,
+                        size: 0.0,
                         price: market_data.close,
                          order_type: OrderType::Market,
                          limit_price: None,

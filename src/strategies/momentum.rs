@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use ta::indicators::{ExponentialMovingAverage, RelativeStrengthIndex};
+use crate::utils::indicators::CachedIndicator;
 use ta::Next;
 
 use crate::trading::{MarketData, Signal, SignalType, OrderSide, OrderType};
@@ -19,10 +20,10 @@ pub struct MomentumStrategy {
     rsi_period: usize,
     rsi_overbought: f64,
     rsi_oversold: f64,
-    position_size: f64,
-    ema_short: Option<ExponentialMovingAverage>,
-    ema_long: Option<ExponentialMovingAverage>,
-    rsi: Option<RelativeStrengthIndex>,
+
+    ema_short: Option<CachedIndicator<ExponentialMovingAverage>>,
+    ema_long: Option<CachedIndicator<ExponentialMovingAverage>>,
+    rsi: Option<CachedIndicator<RelativeStrengthIndex>>,
     positions: Vec<Position>,
 }
 
@@ -35,7 +36,7 @@ impl MomentumStrategy {
             rsi_period: 14,
             rsi_overbought: 70.0,
             rsi_oversold: 30.0,
-            position_size: 1.0,
+
             ema_short: None,
             ema_long: None,
             rsi: None,
@@ -45,9 +46,9 @@ impl MomentumStrategy {
 
     /// Initialise indicators with historical prices
     fn warm_up(&mut self, prices: &[f64]) {
-        let mut ema_s = ExponentialMovingAverage::new(self.ema_short_period).unwrap();
-        let mut ema_l = ExponentialMovingAverage::new(self.ema_long_period).unwrap();
-        let mut rsi = RelativeStrengthIndex::new(self.rsi_period).unwrap();
+        let mut ema_s = CachedIndicator::new(ExponentialMovingAverage::new(self.ema_short_period).unwrap());
+        let mut ema_l = CachedIndicator::new(ExponentialMovingAverage::new(self.ema_long_period).unwrap());
+        let mut rsi = CachedIndicator::new(RelativeStrengthIndex::new(self.rsi_period).unwrap());
         for &p in prices {
             ema_s.next(p);
             ema_l.next(p);
@@ -94,7 +95,7 @@ impl TradingStrategy for MomentumStrategy {
                 symbol: self.pair.to_string(),
                 signal_type: SignalType::Buy,
                 price: current_price,
-                size: self.position_size,
+                size: 0.0,
                 order_type: OrderType::Market,
                 limit_price: None,
                 stop_price: None,
@@ -109,7 +110,7 @@ impl TradingStrategy for MomentumStrategy {
                 symbol: self.pair.to_string(),
                 signal_type: SignalType::Sell,
                 price: current_price,
-                size: self.position_size,
+                size: 0.0,
                 order_type: OrderType::Market,
                 limit_price: None,
                 stop_price: None,

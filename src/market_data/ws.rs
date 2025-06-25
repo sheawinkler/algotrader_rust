@@ -5,6 +5,7 @@
 //! Future: extend with Raydium/Orca/Serum streams or switch to Pyth.
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::env;
 
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
@@ -18,6 +19,122 @@ use crate::utils::types::TradingPair;
 /// Shared cache of latest prices.
 pub type PriceCache = Arc<RwLock<HashMap<TradingPair, f64>>>;
 
+/// Internal resilient WebSocket loop with automatic reconnection/back-off.
+async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
+    // --- Pre-compute HTTP fallback params ---
+    fn symbol_to_mint(sym: &str) -> String {
+        match sym.to_ascii_uppercase().as_str() {
+            "SOL" => "So11111111111111111111111111111111111111112".to_string(),
+            s => s.to_string(),
+        }
+    }
+    let mint_tokens: Vec<String> = symbols
+        .iter()
+        .filter_map(|s| s.split('/').next().map(symbol_to_mint))
+        .collect();
+    let ids_param = mint_tokens.join(",");
+
+    // Helper function to fetch latest prices via HTTP lite-api once
+    async fn fetch_prices_http(ids_param: &str, cache: &PriceCache) {
+        let url = format!("https://lite-api.jup.ag/price/v2?ids={}", ids_param);
+        if let Ok(resp) = reqwest::get(&url).await {
+            if let Ok(json) = resp.json::<PriceApiResp>().await {
+                let mut guard = cache.write().await;
+                for (sym, data) in json.data {
+                    let price_f = data.price.parse::<f64>().unwrap_or(0.0);
+                    let pair = TradingPair::new(&sym, "USDC");
+                    guard.insert(pair, price_f);
+                }
+            }
+        }
+    }
+
+
+        // Helper function to fetch latest prices via Birdeye public API once (requires API key)
+    async fn fetch_prices_birdeye(ids_param: &str, cache: &PriceCache) {
+        if let Ok(api_key) = env::var("BIRDEYE_API_KEY") {
+            let url = format!(
+                "https://public-api.birdeye.so/defi/multi_price?list_address={}",
+                ids_param
+            );
+            let client = reqwest::Client::new();
+            if let Ok(resp) = client
+                .get(&url)
+                .header("accept", "application/json")
+                .header("x-chain", "solana")
+                .header("X-API-KEY", api_key)
+                .send()
+                .await
+            {
+                if let Ok(json) = resp.json::<BirdeyeResp>().await {
+                    if json.success {
+                        let mut guard = cache.write().await;
+                        for (mint, entry) in json.data {
+                            let price_f = entry.value;
+                            let sym = if mint.eq_ignore_ascii_case("So11111111111111111111111111111111111111112") {
+                                "SOL"
+                            } else {
+                                mint.as_str()
+                            };
+                            let pair = TradingPair::new(sym, "USDC");
+                            guard.insert(pair, price_f);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    use tokio::time::{sleep, Duration};
+    let ws_url = "wss://quote-api.jup.ag/v6/ws";
+    loop {
+        match connect_async(ws_url).await {
+            Ok((mut ws, _)) => {
+                log::info!("[WS] Connected to Jupiter price stream ({} symbols)", symbols.len());
+                // Send subscription list
+                let sub_msg = serde_json::json!({
+                    "type": "subscribe",
+                    "channel": "price",
+                    "symbols": symbols,
+                });
+                if ws.send(Message::Text(sub_msg.to_string())).await.is_err() {
+                    log::error!("[WS] Failed to send subscribe message");
+                }
+                // Main read loop
+                while let Some(msg) = ws.next().await {
+                    match msg {
+                        Ok(Message::Text(txt)) => {
+                            if let Ok(evt) = serde_json::from_str::<PriceUpdate>(&txt) {
+                                let pair = TradingPair::new(&evt.base, &evt.quote);
+                                let mut guard = cache.write().await;
+                                guard.insert(pair, evt.price);
+                            }
+                        }
+                        Ok(Message::Ping(_)) => {
+                            // Respond to pings to keep connection alive
+                            let _ = ws.send(Message::Pong(Vec::new())).await;
+                        }
+                        Err(e) => {
+                            log::warn!("[WS] Stream error: {} – reconnecting", e);
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("[WS] Connection error: {} – retrying in 10s", e);
+            }
+        }
+        // Back-off before reconnect
+        // Fetch once via HTTP while waiting to reconnect
+        fetch_prices_http(&ids_param, &cache).await;
+        fetch_prices_birdeye(&ids_param, &cache).await;
+        sleep(Duration::from_secs(10)).await;
+    }
+}
+
+
 /// Spawn the background WebSocket task. The handle should be kept so the task
 /// lives as long as the engine. If it crashes, the caller may decide to
 /// restart it.
@@ -25,7 +142,16 @@ pub fn spawn_price_feed(pairs: &[TradingPair], cache: PriceCache) -> JoinHandle<
     let symbols: Vec<String> = pairs.iter().map(|p| format!("{}/{}", p.base, p.quote)).collect();
     let cache_clone = cache.clone();
 
-    tokio::spawn(async move {
+    // Single resilient task handles WS + HTTP fallback
+    tokio::spawn(async move { run_ws_loop(symbols, cache_clone).await })
+}
+
+// -----------------------------------------------------------------------------
+/*
+// Legacy duplicated logic below removed (consolidated into run_ws_loop)
+// -----------------------------------------------------------------------------
+
+
         // ---- Jupiter Price Feed ----
         // Try WebSocket first (undocumented; may fail with 404). If it fails,
         // fall back to simple HTTP polling using `https://lite-api.jup.ag/price`.
@@ -149,6 +275,9 @@ pub fn spawn_price_feed(pairs: &[TradingPair], cache: PriceCache) -> JoinHandle<
 }
 
 #[derive(Debug, Deserialize)]
+*/
+
+#[derive(Debug, Deserialize)]
 struct PriceUpdate {
     #[serde(rename = "type")]
     _ty: String,
@@ -158,6 +287,17 @@ struct PriceUpdate {
 }
 
 // ----- HTTP Price API response structs -----
+
+#[derive(Debug, Deserialize)]
+struct BirdeyeRespEntry {
+    value: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct BirdeyeResp {
+    data: std::collections::HashMap<String, BirdeyeRespEntry>,
+    success: bool,
+}
 #[derive(Debug, Deserialize)]
 struct PriceApiRespEntry {
     price: String,

@@ -2,7 +2,7 @@
 
 extern crate algotraderv2 as algotraderv2_rust;
 
-use algotraderv2_rust::{TradingEngine, config::Config};
+use algotraderv2_rust::{config::Config, TradingEngine};
 
 #[tokio::test]
 async fn trading_engine_smoke_test() {

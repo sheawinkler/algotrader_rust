@@ -121,7 +121,7 @@ impl super::DexClient for PhotonClient {
         limit_price: Option<f64>,
         _stop_price: Option<f64>,
         _take_profit_price: Option<f64>,
-        signer: &str,
+        _wallet: &crate::wallet::Wallet,
     ) -> Result<String> {
         // Handle order types
         match order_type {

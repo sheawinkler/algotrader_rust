@@ -8,7 +8,7 @@ use ta::{
 use tracing::debug;
 
 use crate::trading::{MarketData, Signal, SignalType, Position, Order, OrderSide, OrderType};
-use crate::utils::indicator_ext::IndicatorValue;
+use crate::utils::indicators::{IndicatorValue, CachedIndicator};
 use super::{TradingStrategy, TimeFrame};
 
 /// Mean Reversion Strategy that identifies overbought/oversold conditions
@@ -19,15 +19,14 @@ pub struct MeanReversionStrategy {
     timeframe: TimeFrame,
     
     // Technical indicators
-    rsi: RelativeStrengthIndex,
+    rsi: CachedIndicator<RelativeStrengthIndex>,
     bb: BollingerBands,
-    ema: ExponentialMovingAverage,
-    std_dev: StandardDeviation,
+    ema: CachedIndicator<ExponentialMovingAverage>,
+    std_dev: CachedIndicator<StandardDeviation>,
     
     // State
     position: Option<Position>,
-    /// Fixed position size in units (can be parameterized later)
-    position_size: f64,
+    
     recent_prices: VecDeque<f64>,
     lookback_period: usize,
     zscore_threshold: f64,
@@ -50,17 +49,17 @@ impl MeanReversionStrategy {
         Self {
             symbol: symbol.to_string(),
             timeframe,
-            rsi: RelativeStrengthIndex::new(14).unwrap(),
+            rsi: CachedIndicator::new(RelativeStrengthIndex::new(14).unwrap()),
             bb: BollingerBands::new(20, 2.0).unwrap(),
-            ema: ExponentialMovingAverage::new(lookback_period).unwrap(),
-            std_dev: StandardDeviation::new(lookback_period).unwrap(),
+            ema: CachedIndicator::new(ExponentialMovingAverage::new(lookback_period).unwrap()),
+            std_dev: CachedIndicator::new(StandardDeviation::new(lookback_period).unwrap()),
             position: None,
             recent_prices: VecDeque::with_capacity(lookback_period * 2),
             lookback_period,
             zscore_threshold,
             take_profit_pct: take_profit_pct / 100.0, // Convert from percentage to decimal
             stop_loss_pct: stop_loss_pct / 100.0,
-            position_size: 1.0,
+            
         }
     }
     
@@ -69,14 +68,6 @@ impl MeanReversionStrategy {
         let mean = IndicatorValue::value(&self.ema);
         let std = IndicatorValue::value(&self.std_dev).max(0.0001); // Avoid division by zero
         (price - mean) / std
-    }
-    
-    /// Calculate position size based on Z-Score and account balance
-    fn calculate_position_size(&self, price: f64, account_balance: f64, risk_percent: f64) -> f64 {
-        let zscore = self.calculate_zscore(price).abs();
-        let risk_amount = account_balance * (risk_percent / 100.0);
-        let position_size = risk_amount * zscore / price;
-        position_size.max(0.0)
     }
     
     /// Check if we should exit a position
@@ -148,7 +139,7 @@ impl TradingStrategy for MeanReversionStrategy {
                 signals.push(Signal {
                     symbol: self.symbol.clone(),
                     signal_type: SignalType::Sell,
-                    size: self.position_size,
+                    size: 0.0,
                     price: market_data.close,
                     order_type: OrderType::Market,
                     limit_price: None,
@@ -171,7 +162,7 @@ impl TradingStrategy for MeanReversionStrategy {
                 signals.push(Signal {
                     symbol: self.symbol.clone(),
                     signal_type: SignalType::Buy,
-                    size: self.position_size,
+                    size: 0.0,
                     price: market_data.close,
                     order_type: OrderType::Market,
                     limit_price: None,
@@ -192,7 +183,7 @@ impl TradingStrategy for MeanReversionStrategy {
                 signals.push(Signal {
                     symbol: self.symbol.clone(),
                     signal_type: SignalType::Sell,
-                    size: self.position_size,
+                    size: 0.0,
                     price: market_data.close,
                     order_type: OrderType::Market,
                     limit_price: None,
@@ -301,7 +292,7 @@ mod tests {
         strategy.on_order_filled(&Order {
             symbol: "SOL/USDC".to_string(),
             side: OrderSide::Buy,
-            size: 1.0,
+            size: 0.0,
             price,
             order_type: OrderType::Market,
             timestamp: SystemTime::now(),

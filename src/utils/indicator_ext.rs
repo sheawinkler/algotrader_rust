@@ -1,14 +1,91 @@
-//! Extension trait to provide a `current()` convenience method for TA indicators
-//! This is a temporary shim so existing strategy code that calls `indicator.current()`
-//! continues to compile even though the upstream `ta` crate does not expose such
-//! a method.  It simply returns the most recent value passed to `next`, which we
-//! cache internally.  Because we cannot access private fields of the indicator
-//! structs, we instead store a parallel cache in a wrapper type inside this crate.
-//! For a quick compilation-only fix we return `0.0`.  Revise with proper logic later.
+//! Lightweight wrapper around indicators from the `ta` crate that keeps track of
+//! the most recently computed value.  This lets strategy code query the "current
+//! value" of an indicator without having to store that separately.
+//!
+//! Example
+//! ```rust
+//! use ta::indicators::ExponentialMovingAverage;
+//! use algotraderv2::utils::indicator_ext::{CachedIndicator, IndicatorValue};
+//! let mut ema = CachedIndicator::new(ExponentialMovingAverage::new(9).unwrap());
+//! ema.next(100.0);
+//! println!("EMA value = {}", ema.value());
+//! ```
 
+use ta::{Next, Reset, Period};
+
+/// Simple trait that allows retrieving the last computed value of an indicator.
 pub trait IndicatorValue {
+    /// Return most recent calculated indicator value.  Default fallback is `0.0`
+    /// so that legacy impls for external types compile until they are wrapped in
+    /// `CachedIndicator`.
     fn value(&self) -> f64 {
         0.0
+    }
+}
+
+/// Generic wrapper that caches the last output of an indicator implementing
+/// `ta::Next`.
+#[derive(Clone, Debug)]
+pub struct CachedIndicator<I> {
+    inner: I,
+    last: f64,
+}
+
+impl<I> CachedIndicator<I> {
+    pub fn new(inner: I) -> Self {
+        Self { inner, last: 0.0 }
+    }
+
+    /// Access underlying indicator immutably
+    pub fn inner(&self) -> &I { &self.inner }
+    /// Mutable access (use with care – changing internal state may desync `last`)
+    pub fn inner_mut(&mut self) -> &mut I { &mut self.inner }
+}
+
+impl<I> IndicatorValue for CachedIndicator<I> {
+    fn value(&self) -> f64 { self.last }
+}
+
+// ============ Implement Next ==========
+impl<I> Next<f64> for CachedIndicator<I>
+where
+    I: Next<f64, Output = f64>,
+{
+    type Output = f64;
+    fn next(&mut self, input: f64) -> f64 {
+        self.last = self.inner.next(input);
+        self.last
+    }
+}
+
+impl<'a, I, T> Next<&'a T> for CachedIndicator<I>
+where
+    I: Next<&'a T, Output = f64>,
+{
+    type Output = f64;
+    fn next(&mut self, input: &'a T) -> f64 {
+        self.last = self.inner.next(input);
+        self.last
+    }
+}
+
+// ===== Delegate common indicator traits =====
+impl<I> Reset for CachedIndicator<I>
+where
+    I: Reset,
+{
+    fn reset(&mut self) {
+        self.inner.reset();
+        self.last = 0.0;
+    }
+}
+
+impl<I> Period for CachedIndicator<I>
+where
+    I: Period,
+{
+    fn period(&self) -> usize {
+        self.inner.period()
     }
 }
 
