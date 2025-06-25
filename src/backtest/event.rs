@@ -20,15 +20,22 @@ pub struct EventQueue {
 
 impl EventQueue {
     /// Create an empty queue
-    pub fn new() -> Self { Self { queue: VecDeque::new() } }
+    pub fn new() -> Self {
+        Self { queue: VecDeque::new() }
+    }
 
     /// Push a new event to the back of the queue
-    pub fn push(&mut self, evt: BacktestEvent) { self.queue.push_back(evt); }
+    pub fn push(&mut self, evt: BacktestEvent) {
+        self.queue.push_back(evt);
+    }
 
     /// Pop the next event, if any
-    pub fn pop(&mut self) -> Option<BacktestEvent> { self.queue.pop_front() }
+    pub fn pop(&mut self) -> Option<BacktestEvent> {
+        self.queue.pop_front()
+    }
 
     /// Whether queue is empty
-    pub fn is_empty(&self) -> bool { self.queue.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
 }
-

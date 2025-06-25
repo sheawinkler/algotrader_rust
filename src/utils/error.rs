@@ -11,7 +11,7 @@ pub enum Error {
     /// Configuration errors
     #[error("Configuration error: {0}")]
     ConfigError(String),
-    
+
     /// Data-related errors (e.g. missing or malformed market data)
     #[error("Data error: {0}")]
     DataError(String),
@@ -23,35 +23,35 @@ pub enum Error {
     /// DEX-related errors
     #[error("DEX error: {0}")]
     DexError(String),
-    
+
     /// Strategy-related errors
     #[error("Strategy error: {0}")]
     StrategyError(String),
-    
+
     /// I/O errors
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
-    
+
     /// JSON serialization/deserialization errors
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
-    
+
     /// TOML serialization/deserialization errors
     #[error("TOML error: {0}")]
     TomlError(#[from] toml::de::Error),
-    
+
     /// TOML serialization errors
     #[error("TOML serialization error: {0}")]
     TomlSerializeError(#[from] toml::ser::Error),
-    
+
     /// Request errors
     #[error("Request error: {0}")]
     ReqwestError(#[from] reqwest::Error),
-    
+
     /// Invalid argument errors
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
-    
+
     /// Other errors
     #[error("Error: {0}")]
     Other(String),
@@ -59,7 +59,6 @@ pub enum Error {
 
 /// Result type for the trading system
 pub type Result<T> = std::result::Result<T, Error>;
-
 
 // Add From conversion for bs58::decode::Error
 impl From<bs58::decode::Error> for Error {
@@ -96,26 +95,23 @@ impl From<anyhow::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_error_display() {
         let config_error = Error::ConfigError("missing field".to_string());
-        assert_eq!(
-            config_error.to_string(),
-            "Configuration error: missing field"
-        );
-        
+        assert_eq!(config_error.to_string(), "Configuration error: missing field");
+
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
         let wrapped_io_error = Error::from(io_error);
         assert!(wrapped_io_error.to_string().contains("I/O error"));
-        
+
         let string_error = Error::from("custom error");
         assert_eq!(string_error.to_string(), "Error: custom error");
-        
+
         let str_error = Error::from("custom error");
         assert_eq!(str_error.to_string(), "Error: custom error");
     }
-    
+
     #[test]
     fn test_result_type() {
         fn might_fail() -> Result<()> {
@@ -125,7 +121,7 @@ mod tests {
                 Err(Error::Other("error".to_string()))
             }
         }
-        
+
         assert!(might_fail().is_ok());
     }
 }

@@ -1,7 +1,7 @@
 //! Parameter tuner that applies updated configs to running strategy instances.
 use std::collections::HashMap;
 
-use super::{TradingStrategy, StrategyConfig};
+use super::{StrategyConfig, TradingStrategy};
 
 /// Helper that maps updated `StrategyConfig` objects to existing strategy
 /// instances and calls their `update_params` hooks so they can adapt at

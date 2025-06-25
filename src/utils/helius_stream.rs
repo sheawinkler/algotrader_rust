@@ -3,10 +3,10 @@
 
 use crate::engine::market_router::ChannelMarketDataStream;
 use crate::utils::market_stream::MarketEvent;
+use futures_util::{SinkExt, StreamExt};
+use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use futures_util::{StreamExt, SinkExt};
-use serde_json::Value;
 
 pub struct HeliusStream {
     pub url: String,
@@ -23,7 +23,9 @@ impl HeliusStream {
 
 #[async_trait::async_trait]
 impl ChannelMarketDataStream for HeliusStream {
-    async fn connect_and_stream_channel(&mut self, _symbols: Vec<String>, sender: Sender<MarketEvent>) -> anyhow::Result<()> {
+    async fn connect_and_stream_channel(
+        &mut self, _symbols: Vec<String>, sender: Sender<MarketEvent>,
+    ) -> anyhow::Result<()> {
         let (mut ws_stream, _) = connect_async(&self.url).await?;
         // Subscribe to account/program updates (example: OpenBook program)
         if let Some(program_id) = &self.program_id {
@@ -33,7 +35,9 @@ impl ChannelMarketDataStream for HeliusStream {
                 "method": "programSubscribe",
                 "params": [program_id, {"encoding": "jsonParsed"}]
             });
-            ws_stream.send(Message::Text(subscribe_msg.to_string())).await?;
+            ws_stream
+                .send(Message::Text(subscribe_msg.to_string()))
+                .await?;
         }
         let (_, mut read) = ws_stream.split();
         while let Some(msg) = read.next().await {

@@ -1,15 +1,15 @@
 //! Momentum trading strategy adapted to the richer `strategies` trait.
 
+use crate::utils::indicators::CachedIndicator;
 use async_trait::async_trait;
 use ta::indicators::{ExponentialMovingAverage, RelativeStrengthIndex};
-use crate::utils::indicators::CachedIndicator;
 use ta::Next;
 
-use crate::trading::{MarketData, Signal, SignalType, OrderSide, OrderType};
+use crate::trading::{MarketData, OrderSide, OrderType, Signal, SignalType};
 use crate::utils::types::TradingPair;
 
-use crate::utils::types::{Position, Order};
-use super::{TradingStrategy, TimeFrame};
+use super::{TimeFrame, TradingStrategy};
+use crate::utils::types::{Order, Position};
 
 /// Momentum trading strategy based on EMA crossover and RSI.
 #[derive(Debug, Clone)]
@@ -46,8 +46,10 @@ impl MomentumStrategy {
 
     /// Initialise indicators with historical prices
     fn warm_up(&mut self, prices: &[f64]) {
-        let mut ema_s = CachedIndicator::new(ExponentialMovingAverage::new(self.ema_short_period).unwrap());
-        let mut ema_l = CachedIndicator::new(ExponentialMovingAverage::new(self.ema_long_period).unwrap());
+        let mut ema_s =
+            CachedIndicator::new(ExponentialMovingAverage::new(self.ema_short_period).unwrap());
+        let mut ema_l =
+            CachedIndicator::new(ExponentialMovingAverage::new(self.ema_long_period).unwrap());
         let mut rsi = CachedIndicator::new(RelativeStrengthIndex::new(self.rsi_period).unwrap());
         for &p in prices {
             ema_s.next(p);

@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::time::Duration;
 
 /// Represents a single trade
@@ -104,24 +104,24 @@ impl PerformanceTracker {
             max_trades,
         }
     }
-    
+
     /// Record a new trade
     pub fn record_trade(&mut self, trade: Trade) -> anyhow::Result<()> {
         // Add to trades list
         self.trades.push(trade.clone());
-        
+
         // Update trade history (FIFO)
         if self.trade_history.len() >= self.max_trades {
             self.trade_history.pop_front();
         }
         self.trade_history.push_back(trade);
-        
+
         // Update metrics
         self.update_metrics()?;
-        
+
         Ok(())
     }
-    
+
     /// Update performance metrics based on current trades
     fn update_metrics(&mut self) -> anyhow::Result<()> {
         // Calculate current balance from all closed trades
@@ -131,67 +131,71 @@ impl PerformanceTracker {
         let win_pnl = 0.0;
         let loss_pnl = 0.0;
         let mut trade_durations = Vec::new();
-        
+
         for trade in &self.trades {
             if let (Some(exit_price), Some(pnl)) = (trade.exit_price, trade.pnl) {
                 balance += pnl;
                 total_pnl += pnl;
-                
+
                 if pnl > 0.0 {
                     winning_trades += 1;
                 }
-                
+
                 if let Some(exit_time) = trade.exit_time {
                     let duration = exit_time - trade.entry_time;
                     trade_durations.push(duration);
                 }
             }
         }
-        
+
         // Update current balance and peak
         self.current_balance = balance;
         if balance > self.peak_balance {
             self.peak_balance = balance;
         }
-        
+
         // Calculate drawdown
         let drawdown = if self.peak_balance > 0.0 {
             (self.peak_balance - balance) / self.peak_balance
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         if drawdown > self.max_drawdown {
             self.max_drawdown = drawdown;
         }
-        
+
         Ok(())
     }
-    
+
     /// Get current performance metrics
     pub fn get_metrics(&self) -> PerformanceMetrics {
         let total_trades = self.trades.len() as u64;
-        let winning_trades = self.trades.iter().filter(|t| t.pnl.unwrap_or(0.0) > 0.0).count() as u64;
+        let winning_trades = self
+            .trades
+            .iter()
+            .filter(|t| t.pnl.unwrap_or(0.0) > 0.0)
+            .count() as u64;
         let losing_trades = total_trades - winning_trades;
         let win_rate = if total_trades > 0 {
             winning_trades as f64 / total_trades as f64
         } else {
             0.0
         };
-        
-        let pnl_values: Vec<f64> = self.trades.iter()
-            .filter_map(|t| t.pnl)
-            .collect();
-            
+
+        let pnl_values: Vec<f64> = self.trades.iter().filter_map(|t| t.pnl).collect();
+
         let avg_win = if winning_trades > 0 {
             pnl_values.iter().filter(|&&p| p > 0.0).sum::<f64>() / winning_trades as f64
         } else {
             0.0
         };
-        
+
         let avg_loss = if losing_trades > 0 {
             pnl_values.iter().filter(|&&p| p < 0.0).sum::<f64>().abs() / losing_trades as f64
         } else {
             0.0
         };
-        
+
         let profit_factor = if avg_loss > 0.0 {
             (avg_win * winning_trades as f64) / (avg_loss * losing_trades as f64)
         } else if winning_trades > 0 {
@@ -199,17 +203,17 @@ impl PerformanceTracker {
         } else {
             0.0
         };
-        
+
         // Calculate equity curve
         let mut equity = self.initial_balance;
         let mut equity_curve = vec![equity];
         let mut daily_returns = Vec::new();
-        
+
         for trade in &self.trades {
             if let Some(pnl) = trade.pnl {
                 equity += pnl;
                 equity_curve.push(equity);
-                
+
                 // Calculate daily return
                 let prev_equity = equity - pnl;
                 if prev_equity > 0.0 {
@@ -217,23 +221,29 @@ impl PerformanceTracker {
                 }
             }
         }
-        
+
         // Calculate risk-adjusted returns (simplified)
         let sharpe_ratio = self.calculate_sharpe_ratio(&daily_returns);
         let sortino_ratio = self.calculate_sortino_ratio(&daily_returns);
         let calmar_ratio = self.calculate_calmar_ratio();
-        
+
         PerformanceMetrics {
-            start_time: self.trades.first().map(|t| t.entry_time).unwrap_or_else(Utc::now),
+            start_time: self
+                .trades
+                .first()
+                .map(|t| t.entry_time)
+                .unwrap_or_else(Utc::now),
             end_time: self.trades.last().and_then(|t| t.exit_time),
             initial_balance: self.initial_balance,
             current_balance: self.current_balance,
             total_trades,
             winning_trades,
-            losing_trades: losing_trades,
+            losing_trades,
             win_rate,
             total_pnl: self.current_balance - self.initial_balance,
-            total_pnl_percentage: (self.current_balance - self.initial_balance) / self.initial_balance * 100.0,
+            total_pnl_percentage: (self.current_balance - self.initial_balance)
+                / self.initial_balance
+                * 100.0,
             avg_win,
             avg_loss,
             profit_factor,
@@ -243,13 +253,21 @@ impl PerformanceTracker {
             sortino_ratio,
             calmar_ratio,
             average_trade_duration: {
-                let total_secs: i64 = self.trades.iter()
+                let total_secs: i64 = self
+                    .trades
+                    .iter()
                     .filter_map(|t| match t.exit_time {
-                        Some(exit) => Some((exit - t.entry_time).num_seconds()),
-                        None => None,
-                    }).sum();
-                let completed: i64 = self.trades.iter().filter(|t| t.exit_time.is_some()).count() as i64;
-                let avg_secs = if completed > 0 { total_secs / completed } else { 0 };
+                        | Some(exit) => Some((exit - t.entry_time).num_seconds()),
+                        | None => None,
+                    })
+                    .sum();
+                let completed: i64 =
+                    self.trades.iter().filter(|t| t.exit_time.is_some()).count() as i64;
+                let avg_secs = if completed > 0 {
+                    total_secs / completed
+                } else {
+                    0
+                };
                 Duration::from_secs(avg_secs as u64)
             },
             trade_dates: self.trades.iter().map(|t| t.entry_time).collect(),
@@ -259,51 +277,50 @@ impl PerformanceTracker {
             yearly_returns: Vec::new(),  // Would aggregate from daily returns
         }
     }
-    
+
     /// Calculate Sharpe ratio (risk-free rate assumed to be 0 for simplicity)
     fn calculate_sharpe_ratio(&self, returns: &[f64]) -> f64 {
         if returns.is_empty() {
             return 0.0;
         }
-        
+
         let mean = returns.iter().sum::<f64>() / returns.len() as f64;
-        let std_dev = (returns.iter()
-            .map(|r| (r - mean).powi(2))
-            .sum::<f64>() / returns.len() as f64)
-            .sqrt();
-            
+        let std_dev =
+            (returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / returns.len() as f64).sqrt();
+
         if std_dev > 0.0 {
             mean / std_dev * (365.0_f64).sqrt() // Annualized
         } else {
             0.0
         }
     }
-    
+
     /// Calculate Sortino ratio
     fn calculate_sortino_ratio(&self, returns: &[f64]) -> f64 {
         if returns.is_empty() {
             return 0.0;
         }
-        
+
         let mean = returns.iter().sum::<f64>() / returns.len() as f64;
-        let downside_returns: Vec<f64> = returns.iter()
+        let downside_returns: Vec<f64> = returns
+            .iter()
             .filter(|&&r| r < 0.0)
             .map(|&r| r.powi(2))
             .collect();
-            
+
         let downside_dev = if !downside_returns.is_empty() {
             (downside_returns.iter().sum::<f64>() / downside_returns.len() as f64).sqrt()
         } else {
             0.0
         };
-        
+
         if downside_dev > 0.0 {
             mean / downside_dev * (365.0_f64).sqrt() // Annualized
         } else {
             0.0
         }
     }
-    
+
     /// Calculate Calmar ratio
     fn calculate_calmar_ratio(&self) -> f64 {
         if self.max_drawdown > 0.0 {
@@ -319,7 +336,7 @@ impl PerformanceTracker {
 mod tests {
     use super::*;
     use chrono::{Duration, Utc};
-    
+
     fn create_test_trade(id: &str, pnl: Option<f64>, duration_hours: i64) -> Trade {
         let now = Utc::now();
         Trade {
@@ -341,18 +358,24 @@ mod tests {
             notes: None,
         }
     }
-    
+
     #[test]
     fn test_performance_tracker() {
         let mut tracker = PerformanceTracker::new(10_000.0, 1000);
-        
+
         // Add some winning and losing trades
-        tracker.record_trade(create_test_trade("1", Some(100.0), 24)).unwrap();
-        tracker.record_trade(create_test_trade("2", Some(150.0), 48)).unwrap();
-        tracker.record_trade(create_test_trade("3", Some(-50.0), 72)).unwrap();
-        
+        tracker
+            .record_trade(create_test_trade("1", Some(100.0), 24))
+            .unwrap();
+        tracker
+            .record_trade(create_test_trade("2", Some(150.0), 48))
+            .unwrap();
+        tracker
+            .record_trade(create_test_trade("3", Some(-50.0), 72))
+            .unwrap();
+
         let metrics = tracker.get_metrics();
-        
+
         assert_eq!(metrics.total_trades, 3);
         assert_eq!(metrics.winning_trades, 2);
         assert_eq!(metrics.losing_trades, 1);
@@ -360,13 +383,13 @@ mod tests {
         assert!((metrics.total_pnl - 200.0).abs() < 0.01);
         assert!(metrics.profit_factor > 0.0);
     }
-    
+
     #[test]
     fn test_sharpe_ratio() {
         let tracker = PerformanceTracker::default();
         let returns = vec![0.01, -0.005, 0.02, -0.01, 0.015];
         let sharpe = tracker.calculate_sharpe_ratio(&returns);
-        
+
         // Just verify it's calculated without panicking
         assert!(sharpe.is_finite());
     }

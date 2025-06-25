@@ -1,16 +1,16 @@
 //! Bundle Sniper Strategy
-//! 
+//!
 //! Goal: detect pending bundled transactions that include multiple tokens (e.g., LiquidStacks, Raydium IDOs,
 //! or aggregator batches) and pre-emptively buy the underlying coins just before the bundle executes, then
 //! exit quickly after the bundle confirmation to capture immediate price impact.
-//! 
+//!
 //! NOTE:  This is a placeholder implementation that fulfils trait requirements so the project can compile.
 //! Proper on-chain bundle detection logic will be added later.
 
-use crate::strategies::{TradingStrategy, StrategyConfig, TimeFrame};
-use crate::trading::{MarketData, Signal, Position, Order};
-use async_trait::async_trait;
+use crate::strategies::{StrategyConfig, TimeFrame, TradingStrategy};
+use crate::trading::{MarketData, Order, Position, Signal};
 use anyhow::Result;
+use async_trait::async_trait;
 use std::convert::TryFrom;
 
 #[derive(Debug, Clone)]
@@ -21,10 +21,7 @@ pub struct BundleSniperStrategy {
 
 impl BundleSniperStrategy {
     pub fn new(name: &str, symbols: Vec<String>) -> Self {
-        Self {
-            name: name.to_string(),
-            symbols,
-        }
+        Self { name: name.to_string(), symbols }
     }
 }
 

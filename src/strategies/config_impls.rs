@@ -5,13 +5,7 @@
 use super::*;
 use std::convert::TryFrom;
 
-mod _removed_brace {
-
-
-
-
-
-}
+mod _removed_brace {}
 
 impl TryFrom<&StrategyConfig> for AdvancedStrategy {
     type Error = Box<dyn std::error::Error>;
@@ -35,14 +29,7 @@ impl TryFrom<&StrategyConfig> for AdvancedStrategy {
 impl TryFrom<&StrategyConfig> for MeanReversionStrategy {
     type Error = Box<dyn std::error::Error>;
     fn try_from(_cfg: &StrategyConfig) -> Result<Self, Self::Error> {
-        Ok(MeanReversionStrategy::new(
-            "SOL/USDC",
-            TimeFrame::OneHour,
-            20,
-            2.0,
-            1.0,
-            1.0,
-        ))
+        Ok(MeanReversionStrategy::new("SOL/USDC", TimeFrame::OneHour, 20, 2.0, 1.0, 1.0))
     }
 }
 
@@ -70,28 +57,14 @@ impl TryFrom<&StrategyConfig> for TrendFollowingStrategy {
 impl TryFrom<&StrategyConfig> for OrderFlowStrategy {
     type Error = Box<dyn std::error::Error>;
     fn try_from(_cfg: &StrategyConfig) -> Result<Self, Self::Error> {
-        Ok(OrderFlowStrategy::new(
-            "SOL/USDC",
-            TimeFrame::OneHour,
-            20,
-            0.5,
-            50,
-            1.0,
-            0.5,
-        ))
+        Ok(OrderFlowStrategy::new("SOL/USDC", TimeFrame::OneHour, 20, 0.5, 50, 1.0, 0.5))
     }
 }
 
 impl TryFrom<&StrategyConfig> for MemeArbitrageStrategy {
     type Error = Box<dyn std::error::Error>;
     fn try_from(_cfg: &StrategyConfig) -> Result<Self, Self::Error> {
-        Ok(MemeArbitrageStrategy::new(
-            "SOL/USDC",
-            TimeFrame::OneHour,
-            1.0,
-            0.5,
-            3,
-        ))
+        Ok(MemeArbitrageStrategy::new("SOL/USDC", TimeFrame::OneHour, 1.0, 0.5, 3))
     }
 }
 

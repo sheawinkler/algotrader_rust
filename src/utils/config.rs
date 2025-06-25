@@ -1,7 +1,7 @@
 //! Configuration management for the trading system.
 
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path, collections::HashMap};
+use std::{collections::HashMap, fs, path::Path};
 
 /// Main configuration structure for the trading system
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,34 +66,44 @@ pub struct StrategySettings {
 impl Default for Config {
     fn default() -> Self {
         let mut dex_config = HashMap::new();
-        dex_config.insert("jupiter".to_string(), DexConfig {
-            enabled: true,
-            params: HashMap::new(),
-        });
-        
+        dex_config
+            .insert("jupiter".to_string(), DexConfig { enabled: true, params: HashMap::new() });
+
         let mut strategies = HashMap::new();
-        strategy_settings.insert("mean_reversion".to_string(), StrategySettings {
-            enabled: true,
-            params: [
-                ("lookback".to_string(), "20".to_string()),
-                ("entry_z_score".to_string(), "2.0".to_string()),
-                ("exit_z_score".to_string(), "0.5".to_string()),
-                ("position_size".to_string(), "0.1".to_string()),
-            ].iter().cloned().collect(),
-        });
-        
-        strategy_settings.insert("momentum".to_string(), StrategySettings {
-            enabled: true,
-            params: [
-                ("ema_short".to_string(), "9".to_string()),
-                ("ema_long".to_string(), "21".to_string()),
-                ("rsi_period".to_string(), "14".to_string()),
-                ("rsi_overbought".to_string(), "70.0".to_string()),
-                ("rsi_oversold".to_string(), "30.0".to_string()),
-                ("position_size".to_string(), "0.1".to_string()),
-            ].iter().cloned().collect(),
-        });
-        
+        strategy_settings.insert(
+            "mean_reversion".to_string(),
+            StrategySettings {
+                enabled: true,
+                params: [
+                    ("lookback".to_string(), "20".to_string()),
+                    ("entry_z_score".to_string(), "2.0".to_string()),
+                    ("exit_z_score".to_string(), "0.5".to_string()),
+                    ("position_size".to_string(), "0.1".to_string()),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
+            },
+        );
+
+        strategy_settings.insert(
+            "momentum".to_string(),
+            StrategySettings {
+                enabled: true,
+                params: [
+                    ("ema_short".to_string(), "9".to_string()),
+                    ("ema_long".to_string(), "21".to_string()),
+                    ("rsi_period".to_string(), "14".to_string()),
+                    ("rsi_overbought".to_string(), "70.0".to_string()),
+                    ("rsi_oversold".to_string(), "30.0".to_string()),
+                    ("position_size".to_string(), "0.1".to_string()),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
+            },
+        );
+
         Self {
             app: AppConfig {
                 log_level: "info".to_string(),
@@ -120,24 +130,24 @@ impl Config {
         let config: Config = toml::from_str(&content)?;
         Ok(config)
     }
-    
+
     /// Save configuration to a file
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
         let content = toml::to_string_pretty(self)?;
         fs::write(path, content)?;
         Ok(())
     }
-    
+
     /// Get a DEX configuration by name
     pub fn get_dex_config(&self, name: &str) -> Option<&DexConfig> {
         self.dex.get(name)
     }
-    
+
     /// Get a strategy configuration by name
     pub fn get_strategy_config(&self, name: &str) -> Option<&StrategyConfig> {
         self.strategies.get(name)
     }
-    
+
     /// Get the default configuration as a TOML string
     pub fn default_toml() -> String {
         toml::to_string_pretty(&Self::default()).unwrap()
@@ -148,7 +158,7 @@ impl Config {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
-    
+
     #[test]
     fn test_default_config() {
         let config = Config::default();
@@ -158,23 +168,23 @@ mod tests {
         assert!(config.strategies.contains_key("mean_reversion"));
         assert!(config.strategies.contains_key("momentum"));
     }
-    
+
     #[test]
     fn test_save_and_load_config() {
         let config = Config::default();
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path();
-        
+
         // Save config
         config.save_to_file(path).unwrap();
-        
+
         // Load config
         let loaded_config = Config::from_file(path).unwrap();
-        
+
         assert_eq!(config.app.log_level, loaded_config.app.log_level);
         assert_eq!(config.trading.default_pair, loaded_config.trading.default_pair);
     }
-    
+
     #[test]
     fn test_default_toml() {
         let toml = Config::default_toml();

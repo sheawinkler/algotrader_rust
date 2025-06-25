@@ -4,12 +4,11 @@
 //! cache of the most recent mid-price for each subscribed trading pair.
 //! Future: extend with Raydium/Orca/Serum streams or switch to Pyth.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
 use std::env;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
-
 
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -24,8 +23,8 @@ async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
     // --- Pre-compute HTTP fallback params ---
     fn symbol_to_mint(sym: &str) -> String {
         match sym.to_ascii_uppercase().as_str() {
-            "SOL" => "So11111111111111111111111111111111111111112".to_string(),
-            s => s.to_string(),
+            | "SOL" => "So11111111111111111111111111111111111111112".to_string(),
+            | s => s.to_string(),
         }
     }
     let mint_tokens: Vec<String> = symbols
@@ -49,8 +48,7 @@ async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
         }
     }
 
-
-        // Helper function to fetch latest prices via Birdeye public API once (requires API key)
+    // Helper function to fetch latest prices via Birdeye public API once (requires API key)
     async fn fetch_prices_birdeye(ids_param: &str, cache: &PriceCache) {
         if let Ok(api_key) = env::var("BIRDEYE_API_KEY") {
             let url = format!(
@@ -71,7 +69,9 @@ async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
                         let mut guard = cache.write().await;
                         for (mint, entry) in json.data {
                             let price_f = entry.value;
-                            let sym = if mint.eq_ignore_ascii_case("So11111111111111111111111111111111111111112") {
+                            let sym = if mint
+                                .eq_ignore_ascii_case("So11111111111111111111111111111111111111112")
+                            {
                                 "SOL"
                             } else {
                                 mint.as_str()
@@ -89,7 +89,7 @@ async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
     let ws_url = "wss://quote-api.jup.ag/v6/ws";
     loop {
         match connect_async(ws_url).await {
-            Ok((mut ws, _)) => {
+            | Ok((mut ws, _)) => {
                 log::info!("[WS] Connected to Jupiter price stream ({} symbols)", symbols.len());
                 // Send subscription list
                 let sub_msg = serde_json::json!({
@@ -103,26 +103,26 @@ async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
                 // Main read loop
                 while let Some(msg) = ws.next().await {
                     match msg {
-                        Ok(Message::Text(txt)) => {
+                        | Ok(Message::Text(txt)) => {
                             if let Ok(evt) = serde_json::from_str::<PriceUpdate>(&txt) {
                                 let pair = TradingPair::new(&evt.base, &evt.quote);
                                 let mut guard = cache.write().await;
                                 guard.insert(pair, evt.price);
                             }
                         }
-                        Ok(Message::Ping(_)) => {
+                        | Ok(Message::Ping(_)) => {
                             // Respond to pings to keep connection alive
                             let _ = ws.send(Message::Pong(Vec::new())).await;
                         }
-                        Err(e) => {
+                        | Err(e) => {
                             log::warn!("[WS] Stream error: {} – reconnecting", e);
                             break;
                         }
-                        _ => {}
+                        | _ => {}
                     }
                 }
             }
-            Err(e) => {
+            | Err(e) => {
                 log::warn!("[WS] Connection error: {} – retrying in 10s", e);
             }
         }
@@ -134,12 +134,14 @@ async fn run_ws_loop(symbols: Vec<String>, cache: PriceCache) {
     }
 }
 
-
 /// Spawn the background WebSocket task. The handle should be kept so the task
 /// lives as long as the engine. If it crashes, the caller may decide to
 /// restart it.
 pub fn spawn_price_feed(pairs: &[TradingPair], cache: PriceCache) -> JoinHandle<()> {
-    let symbols: Vec<String> = pairs.iter().map(|p| format!("{}/{}", p.base, p.quote)).collect();
+    let symbols: Vec<String> = pairs
+        .iter()
+        .map(|p| format!("{}/{}", p.base, p.quote))
+        .collect();
     let cache_clone = cache.clone();
 
     // Single resilient task handles WS + HTTP fallback
@@ -237,7 +239,7 @@ pub fn spawn_price_feed(pairs: &[TradingPair], cache: PriceCache) -> JoinHandle<
                 }
             }
         }
-        
+
         loop {
             let url = format!("https://lite-api.jup.ag/price/v2?ids={}", ids_param);
             match reqwest::get(&url).await {

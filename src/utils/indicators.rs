@@ -12,13 +12,9 @@ use ta::{Period, Reset};
 // verbose `ta::indicators::ExponentialMovingAverage`).
 
 pub use ta::indicators::{
-    BollingerBands as BB,
-    ExponentialMovingAverage as EMA,
-    MovingAverageConvergenceDivergence as MACD,
-    PercentagePriceOscillator as PPO,
-    RelativeStrengthIndex as RSI,
-    SimpleMovingAverage as SMA,
-    StandardDeviation as StdDev,
+    BollingerBands as BB, ExponentialMovingAverage as EMA,
+    MovingAverageConvergenceDivergence as MACD, PercentagePriceOscillator as PPO,
+    RelativeStrengthIndex as RSI, SimpleMovingAverage as SMA, StandardDeviation as StdDev,
 };
 
 // ---------- Helper traits & wrappers ----------
@@ -27,7 +23,9 @@ pub use ta::indicators::{
 /// Falls back to `0.0` for types that do not cache a value (useful for
 /// third-party indicators until they are wrapped).
 pub trait IndicatorValue {
-    fn value(&self) -> f64 { 0.0 }
+    fn value(&self) -> f64 {
+        0.0
+    }
 }
 
 /// Generic wrapper that caches the last output of any `ta::Next` indicator so
@@ -39,13 +37,21 @@ pub struct CachedIndicator<I> {
 }
 
 impl<I> CachedIndicator<I> {
-    pub fn new(inner: I) -> Self { Self { inner, last: 0.0 } }
-    pub fn inner(&self) -> &I { &self.inner }
-    pub fn inner_mut(&mut self) -> &mut I { &mut self.inner }
+    pub fn new(inner: I) -> Self {
+        Self { inner, last: 0.0 }
+    }
+    pub fn inner(&self) -> &I {
+        &self.inner
+    }
+    pub fn inner_mut(&mut self) -> &mut I {
+        &mut self.inner
+    }
 }
 
 impl<I> IndicatorValue for CachedIndicator<I> {
-    fn value(&self) -> f64 { self.last }
+    fn value(&self) -> f64 {
+        self.last
+    }
 }
 
 impl<I> Next<f64> for CachedIndicator<I>
@@ -84,7 +90,9 @@ impl<I> Period for CachedIndicator<I>
 where
     I: Period,
 {
-    fn period(&self) -> usize { self.inner.period() }
+    fn period(&self) -> usize {
+        self.inner.period()
+    }
 }
 
 // Implement the trait for external indicator types that are commonly used so
@@ -97,15 +105,13 @@ impl IndicatorValue for StdDev {}
 impl IndicatorValue for PPO {}
 
 // ---------- Legacy shim indicators ----------
-use ta::{High, Low, Close};
+use ta::{Close, High, Low};
 
 #[derive(Debug, Clone, Copy)]
 pub struct StochasticOutput {
     pub k: f64,
     pub d: f64,
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct StochasticOscillator {
@@ -130,7 +136,11 @@ impl StochasticOscillator {
     }
 }
 
-impl Period for StochasticOscillator { fn period(&self) -> usize { self.period } }
+impl Period for StochasticOscillator {
+    fn period(&self) -> usize {
+        self.period
+    }
+}
 impl Reset for StochasticOscillator {
     fn reset(&mut self) {
         self.k_calc.reset();
@@ -147,17 +157,39 @@ impl<T: High + Low + Close> Next<&T> for StochasticOscillator {
 
 /// Extremely-minimal Average Directional Index stub.
 #[derive(Debug, Clone)]
-pub struct AverageDirectionalIndex { period: usize }
+pub struct AverageDirectionalIndex {
+    period: usize,
+}
 impl AverageDirectionalIndex {
     /// Create a new Average Directional Index with the given period.
-    pub fn new(period: usize) -> Self { Self { period } }
+    pub fn new(period: usize) -> Self {
+        Self { period }
+    }
     /// Return the current Average Directional Index value.
-    pub fn current(&self) -> f64 { 0.0 }
+    pub fn current(&self) -> f64 {
+        0.0
+    }
 }
-impl Period for AverageDirectionalIndex { fn period(&self) -> usize { self.period } }
-impl Reset for AverageDirectionalIndex { fn reset(&mut self) {} }
-impl Next<f64> for AverageDirectionalIndex { type Output = f64; fn next(&mut self, _input: f64) -> f64 { 0.0 } }
-impl<'a, T: High + Low + Close> Next<&'a T> for AverageDirectionalIndex { type Output = f64; fn next(&mut self, _input: &'a T) -> f64 { 0.0 } }
+impl Period for AverageDirectionalIndex {
+    fn period(&self) -> usize {
+        self.period
+    }
+}
+impl Reset for AverageDirectionalIndex {
+    fn reset(&mut self) {}
+}
+impl Next<f64> for AverageDirectionalIndex {
+    type Output = f64;
+    fn next(&mut self, _input: f64) -> f64 {
+        0.0
+    }
+}
+impl<'a, T: High + Low + Close> Next<&'a T> for AverageDirectionalIndex {
+    type Output = f64;
+    fn next(&mut self, _input: &'a T) -> f64 {
+        0.0
+    }
+}
 
 impl IndicatorValue for StochasticOscillator {}
 impl IndicatorValue for AverageDirectionalIndex {}
@@ -178,11 +210,17 @@ pub struct VWAP {
 
 impl VWAP {
     /// Create a new VWAP calculator with zeroed state.
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Return the current VWAP.  If no data has been observed the value is `0.0`.
     pub fn value(&self) -> f64 {
-        if self.cum_vol.abs() < f64::EPSILON { 0.0 } else { self.cum_px_vol / self.cum_vol }
+        if self.cum_vol.abs() < f64::EPSILON {
+            0.0
+        } else {
+            self.cum_px_vol / self.cum_vol
+        }
     }
 }
 

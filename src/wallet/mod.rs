@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{pubkey::Pubkey, signature::{Keypair, Signer}};
+use solana_sdk::{
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+};
 use spl_token::state::Account as TokenAccount;
 use tokio::sync::RwLock;
 
@@ -12,7 +15,7 @@ pub struct Wallet {
     rpc: Arc<RpcClient>,
     keypair: Arc<Keypair>,
     // cached SOL balance (lamports) to reduce RPC load; refreshed on every query
-    sol_balance: Arc<RwLock<u64>>, 
+    sol_balance: Arc<RwLock<u64>>,
 }
 
 impl Wallet {
@@ -26,11 +29,17 @@ impl Wallet {
     }
 
     /// Public key of the wallet
-    pub fn pubkey(&self) -> Pubkey { self.keypair.pubkey() }
+    pub fn pubkey(&self) -> Pubkey {
+        self.keypair.pubkey()
+    }
 
     /// Return SOL balance in lamports, refreshing the cache
     pub async fn get_sol_balance(&self) -> Result<u64> {
-        let lamports = self.rpc.get_balance(&self.pubkey()).await.context("fetch balance")?;
+        let lamports = self
+            .rpc
+            .get_balance(&self.pubkey())
+            .await
+            .context("fetch balance")?;
         *self.sol_balance.write().await = lamports;
         Ok(lamports)
     }
@@ -51,7 +60,9 @@ impl Wallet {
         let filters = Some(vec![solana_client::rpc_filter::RpcFilterType::Memcmp(
             solana_client::rpc_filter::Memcmp {
                 offset: 32, // owner field start
-                bytes: solana_client::rpc_filter::MemcmpEncodedBytes::Base58(self.pubkey().to_string()),
+                bytes: solana_client::rpc_filter::MemcmpEncodedBytes::Base58(
+                    self.pubkey().to_string(),
+                ),
                 encoding: None,
             },
         )]);
@@ -65,7 +76,10 @@ impl Wallet {
             with_context: None,
         };
 
-        let accounts = self.rpc.get_program_accounts_with_config(&program_id, acc_cfg).await?;
+        let accounts = self
+            .rpc
+            .get_program_accounts_with_config(&program_id, acc_cfg)
+            .await?;
         let mut map = std::collections::HashMap::new();
         for (_pubkey, acc) in accounts {
             if let Ok(ta) = TokenAccount::unpack(&acc.data) {
@@ -76,7 +90,9 @@ impl Wallet {
     }
 
     /// Sign and send a transaction, returning signature.
-    pub async fn sign_and_send(&self, mut tx: solana_sdk::transaction::Transaction) -> Result<solana_sdk::signature::Signature> {
+    pub async fn sign_and_send(
+        &self, mut tx: solana_sdk::transaction::Transaction,
+    ) -> Result<solana_sdk::signature::Signature> {
         let recent_blockhash = self.rpc.get_latest_blockhash().await?;
         tx.try_sign(&[self.keypair.as_ref()], recent_blockhash)?;
         let sig = self.rpc.send_and_confirm_transaction(&tx).await?;
@@ -84,15 +100,17 @@ impl Wallet {
     }
 
     /// Sign and send a base64-encoded VersionedTransaction produced by Jupiter swap API
-    pub async fn sign_and_send_serialized_tx(&self, tx_b64: &str) -> Result<solana_sdk::signature::Signature> {
-        use solana_sdk::transaction::VersionedTransaction;
+    pub async fn sign_and_send_serialized_tx(
+        &self, tx_b64: &str,
+    ) -> Result<solana_sdk::signature::Signature> {
         use solana_sdk::signer::signers::Signers;
+        use solana_sdk::transaction::VersionedTransaction;
         let tx_bytes = base64::decode(tx_b64.trim())?;
         let vtx: VersionedTransaction = bincode::deserialize(&tx_bytes)?;
         // Create a freshly signed copy using our keypair
-        let signed_tx = VersionedTransaction::try_new(vtx.message.clone(), &[self.keypair.as_ref()])?;
+        let signed_tx =
+            VersionedTransaction::try_new(vtx.message.clone(), &[self.keypair.as_ref()])?;
         let sig = self.rpc.send_and_confirm_transaction(&signed_tx).await?;
         Ok(sig)
     }
 }
-

@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use crate::{utils::types::TradingPair};
+use crate::utils::types::TradingPair;
 
 #[derive(Debug, Clone, Default)]
 pub struct Position {
-    pub size: f64,                    // positive = long, negative = short (we only trade spot longs for now)
-    pub average_entry_price: f64,     // weighted avg
+    pub size: f64, // positive = long, negative = short (we only trade spot longs for now)
+    pub average_entry_price: f64, // weighted avg
     pub realized_pnl: f64,
 }
 
@@ -16,7 +16,8 @@ impl Position {
             // fully closed, reset avg
             self.average_entry_price = 0.0;
         } else {
-            self.average_entry_price = (self.size * self.average_entry_price + qty * price) / new_size;
+            self.average_entry_price =
+                (self.size * self.average_entry_price + qty * price) / new_size;
         }
         self.size = new_size;
     }
@@ -75,14 +76,21 @@ impl Portfolio {
     }
 
     pub fn unrealized_pnl(&self, price_lookup: &impl Fn(&TradingPair) -> Option<f64>) -> f64 {
-        self.positions.iter().map(|(sym, pos)| {
-            let pair_parts: Vec<&str> = sym.split('/').collect();
-            if pair_parts.len() != 2 { return 0.0; }
-            let pair = TradingPair::new(pair_parts[0], pair_parts[1]);
-            if let Some(price) = price_lookup(&pair) {
-                pos.unrealized_pnl(price)
-            } else { 0.0 }
-        }).sum()
+        self.positions
+            .iter()
+            .map(|(sym, pos)| {
+                let pair_parts: Vec<&str> = sym.split('/').collect();
+                if pair_parts.len() != 2 {
+                    return 0.0;
+                }
+                let pair = TradingPair::new(pair_parts[0], pair_parts[1]);
+                if let Some(price) = price_lookup(&pair) {
+                    pos.unrealized_pnl(price)
+                } else {
+                    0.0
+                }
+            })
+            .sum()
     }
 
     pub fn total_usd_value(&self, price_lookup: &impl Fn(&TradingPair) -> Option<f64>) -> f64 {
@@ -101,16 +109,22 @@ impl Portfolio {
 
     /// Export current portfolio state to a CSV file at the given path.
     /// CSV columns: symbol,size,avg_entry_price,realized_pnl,unrealized_pnl
-    pub fn export_csv(&self, path: &std::path::Path, price_lookup: &impl Fn(&TradingPair) -> Option<f64>) -> std::io::Result<()> {
+    pub fn export_csv(
+        &self, path: &std::path::Path, price_lookup: &impl Fn(&TradingPair) -> Option<f64>,
+    ) -> std::io::Result<()> {
         use std::io::Write;
         let mut wtr = csv::Writer::from_path(path)?;
-        wtr.write_record(&["symbol","size","avg_entry_price","realized_pnl","unrealized_pnl"])?;
-        for (sym,pos) in &self.positions {
-            let pair_parts: Vec<&str> = sym.split('/') .collect();
-            let unreal = if pair_parts.len()==2 {
+        wtr.write_record(&["symbol", "size", "avg_entry_price", "realized_pnl", "unrealized_pnl"])?;
+        for (sym, pos) in &self.positions {
+            let pair_parts: Vec<&str> = sym.split('/').collect();
+            let unreal = if pair_parts.len() == 2 {
                 let pair = TradingPair::new(pair_parts[0], pair_parts[1]);
-                price_lookup(&pair).map(|p| pos.unrealized_pnl(p)).unwrap_or(0.0)
-            } else {0.0};
+                price_lookup(&pair)
+                    .map(|p| pos.unrealized_pnl(p))
+                    .unwrap_or(0.0)
+            } else {
+                0.0
+            };
             wtr.write_record(&[
                 sym,
                 &pos.size.to_string(),
@@ -120,7 +134,7 @@ impl Portfolio {
             ])?;
         }
         // Cash row (for completeness)
-        wtr.write_record(&["CASH","0","0",&self.total_realized_pnl.to_string(),"0"])?;
+        wtr.write_record(&["CASH", "0", "0", &self.total_realized_pnl.to_string(), "0"])?;
         wtr.flush()?;
         Ok(())
     }

@@ -92,6 +92,7 @@ async fn main() -> Result<()> {
         std::env::set_var("RUST_LOG", "info");
     }
     tracing_subscriber::fmt::init();
+    algotraderv2::metrics::init().expect("metrics init");
 
     let args = Args::parse();
 
@@ -250,6 +251,22 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     use tokio::time::{sleep, Duration};
 
     // --- Launch TradingEngine -------------------------------------------------
+    // Spawn a background task to capture system metrics every 10s
+    tokio::spawn(async {
+        use sysinfo::{CpuExt, System, SystemExt};
+        let mut sys = System::new_all();
+        loop {
+            sys.refresh_cpu();
+            sys.refresh_memory();
+            let cpu = sys.global_cpu_info().cpu_usage() as f64;
+            let mem_total = sys.total_memory() as f64;
+            let mem_used = sys.used_memory() as f64;
+            metrics::gauge!("sys_cpu_percent", cpu);
+            metrics::gauge!("sys_mem_used_bytes", mem_used);
+            metrics::gauge!("sys_mem_total_bytes", mem_total);
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
     use algotraderv2::TradingEngine;
     let mut engine = TradingEngine::with_config(config.clone(), paper);
     // Determine symbol list: use config default_pair
@@ -261,8 +278,14 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
         }
     });
 
-    // Health endpoint
-    let app = Router::new().route("/healthz", get(health));
+    // Health and metrics endpoints
+    async fn metrics_handler() -> impl IntoResponse {
+        algotraderv2::metrics::handle().render()
+    }
+
+    let app = Router::new()
+        .route("/healthz", get(health))
+        .route("/metrics", get(metrics_handler));
     let primary_addr: SocketAddr = "127.0.0.1:8888".parse().unwrap();
     let listener = match TcpListener::bind(primary_addr) {
         | Ok(l) => l,
