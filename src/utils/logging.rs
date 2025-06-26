@@ -35,7 +35,7 @@ pub fn init_logging(level: &str) {
             )
         })
         .target(Target::Stdout)
-        .init();
+        .try_init().ok();
 
     info!("Logging initialized at level: {}", level);
 }
