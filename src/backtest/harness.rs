@@ -1,15 +1,18 @@
 //! Walk-forward optimisation harness
 //! Iteratively runs backtests on rolling train/test windows and aggregates reports.
 
-use crate::backtest::{Backtester, SimMode, HistoricalDataProvider, providers::CSVHistoricalDataProvider, tick_provider::CSVTicksProvider};
-use std::sync::Arc;
+use crate::backtest::{
+    providers::CSVHistoricalDataProvider, tick_provider::CSVTicksProvider, Backtester,
+    HistoricalDataProvider, SimMode,
+};
 use crate::persistence;
-use crate::strategies::{MeanReversionStrategy, TradingStrategy, TimeFrame};
-use crate::Result;
+use crate::strategies::{MeanReversionStrategy, TimeFrame, TradingStrategy};
 use crate::utils::types::MarketData;
-use tempfile::NamedTempFile;
+use crate::Result;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tempfile::NamedTempFile;
 
 /// Simple config expressed in days for training & testing spans
 pub struct WalkForwardConfig {
@@ -24,18 +27,17 @@ pub struct WalkForwardConfig {
 /// Run walk-forward analysis on a single data CSV file.
 /// `data_path` is borrowed as a `Path` (no needless `PathBuf`).
 pub async fn run_walk_forward(
-    data_path: &Path,
-    timeframe: &str,
-    sim_mode: SimMode,
-    cfg: WalkForwardConfig,
+    data_path: &Path, timeframe: &str, sim_mode: SimMode, cfg: WalkForwardConfig,
 ) -> Result<Vec<crate::backtest::BacktestReport>> {
     // Load full dataset once (bar or tick provider just for timestamps)
     let provider: Box<dyn HistoricalDataProvider> = match sim_mode {
-        SimMode::Bar => Box::new(CSVHistoricalDataProvider::new()),
-        SimMode::Tick => Box::new(CSVTicksProvider::new()),
+        | SimMode::Bar => Box::new(CSVHistoricalDataProvider::new()),
+        | SimMode::Tick => Box::new(CSVTicksProvider::new()),
     };
     let all_data = provider.load(data_path)?;
-    if all_data.is_empty() { return Err(crate::Error::DataError("empty dataset".into())); }
+    if all_data.is_empty() {
+        return Err(crate::Error::DataError("empty dataset".into()));
+    }
 
     let mut reports: Vec<crate::backtest::BacktestReport> = Vec::new();
     let start_ts = all_data.first().unwrap().timestamp;
@@ -49,7 +51,8 @@ pub async fn run_walk_forward(
         let train_end = window_start + train_secs;
         let test_end = train_end + test_secs;
         // Extract test slice
-        let test_slice: Vec<&MarketData> = all_data.iter()
+        let test_slice: Vec<&MarketData> = all_data
+            .iter()
             .filter(|d| d.timestamp >= train_end && d.timestamp < test_end)
             .collect();
         if test_slice.is_empty() {
@@ -67,12 +70,17 @@ pub async fn run_walk_forward(
 
         // Build a fresh backtester similar to simple_backtest but capture the report
         let provider: Box<dyn HistoricalDataProvider> = match sim_mode {
-            SimMode::Bar => Box::new(CSVHistoricalDataProvider::new()),
-            SimMode::Tick => Box::new(CSVTicksProvider::new()),
+            | SimMode::Bar => Box::new(CSVHistoricalDataProvider::new()),
+            | SimMode::Tick => Box::new(CSVTicksProvider::new()),
         };
-        let strategies: Vec<Box<dyn TradingStrategy>> = vec![
-            Box::new(MeanReversionStrategy::new("UNK/UNK", TimeFrame::OneHour, 20, 2.0, 2.0, 1.0)),
-        ];
+        let strategies: Vec<Box<dyn TradingStrategy>> = vec![Box::new(MeanReversionStrategy::new(
+            "UNK/UNK",
+            TimeFrame::OneHour,
+            20,
+            2.0,
+            2.0,
+            1.0,
+        ))];
         let mut bt = Backtester {
             risk_rules: vec![
                 Box::new(crate::risk::StopLossRule::new(0.05)),

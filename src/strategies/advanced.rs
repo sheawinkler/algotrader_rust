@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use chrono::Utc;
+use std::collections::VecDeque;
 
 use crate::utils::indicators::{CachedIndicator, IndicatorValue, StochasticOscillator};
 use async_trait::async_trait;
@@ -136,6 +136,7 @@ impl TradingStrategy for AdvancedStrategy {
 
         // Create a data item for the technical indicators
         let item = DataItem::builder()
+            .open(market_data.open.unwrap_or(market_data.close))
             .high(market_data.high.unwrap_or(market_data.close))
             .low(market_data.low.unwrap_or(market_data.close))
             .close(market_data.close)

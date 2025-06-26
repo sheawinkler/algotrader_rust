@@ -263,6 +263,9 @@ pub struct Signal {
     pub action: SignalAction,
     pub price: f64,
     pub size: f64,
+    /// Confidence score 0-1 (default 1.0)
+    #[serde(default = "default_confidence")]
+    pub confidence: f64,
     pub order_type: OrderType,
     pub limit_price: Option<f64>,
     pub stop_price: Option<f64>,
@@ -270,6 +273,10 @@ pub struct Signal {
     pub take_profit: Option<f64>,
     pub timestamp: i64,
     pub metadata: HashMap<String, String>,
+}
+
+fn default_confidence() -> f64 {
+    1.0
 }
 
 /// Action to take based on a trading signal
@@ -351,6 +358,7 @@ mod tests {
             action: SignalAction::Buy,
             price: 100.0,
             size: 1.0,
+            confidence: 1.0,
             order_type: OrderType::Market,
             limit_price: None,
             stop_price: None,

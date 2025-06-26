@@ -32,7 +32,9 @@ mod tests {
     async fn sidecar_round_trip() {
         // Spin up stub server on an ephemeral port
         let app = Router::new().route("/predict", post(predict_handler));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
         let addr: SocketAddr = listener.local_addr().unwrap();
         let std_listener = listener.into_std().unwrap();
         let server = axum::Server::from_tcp(std_listener)

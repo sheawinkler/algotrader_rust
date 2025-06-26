@@ -410,11 +410,11 @@ impl Clone for Box<dyn HistoricalDataProvider> {
 
 pub mod cache;
 pub mod event;
+pub mod harness;
 pub mod importer;
 pub mod providers;
 pub mod remote_provider;
 pub mod tick_provider;
-pub mod harness;
 
 /// Convenience helper used by CLI until full engine integration is ready
 use std::path::Path;

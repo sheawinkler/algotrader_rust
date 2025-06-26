@@ -32,6 +32,8 @@ strategy_tests = []
 legacy_config = []
 dashboard = []
 sidecar = []
+disabled_strategy_tests = []
+solana-online-tests = []
 
 [profile.release]
 opt-level = 3

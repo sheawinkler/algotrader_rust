@@ -61,7 +61,9 @@ pub struct SidecarClient;
 
 #[cfg(not(feature = "sidecar"))]
 impl SidecarClient {
-    pub fn new(_endpoint: impl Into<String>) -> Self { Self }
+    pub fn new(_endpoint: impl Into<String>) -> Self {
+        Self
+    }
     pub async fn predict(&self, _features: serde_json::Value) -> anyhow::Result<serde_json::Value> {
         Ok(serde_json::json!({}))
     }

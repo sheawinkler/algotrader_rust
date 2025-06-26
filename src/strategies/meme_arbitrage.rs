@@ -1,8 +1,10 @@
 #![allow(clippy::collapsible_else_if)]
 use async_trait::async_trait;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use std::time::SystemTime;
 use tracing::{info, warn};
 
 use super::{TimeFrame, TradingStrategy};
@@ -83,7 +85,7 @@ impl MemeArbitrageStrategy {
                 win_rate: 0.0,
                 profit_factor: 0.0,
                 sharpe_ratio: 0.0,
-                last_review: SystemTime::now(),
+                last_review: SystemTime::now(), // keep as SystemTime for now
             },
             max_position_size,
             max_slippage_pct: max_slippage_pct / 100.0,
@@ -277,10 +279,7 @@ impl TradingStrategy for MemeArbitrageStrategy {
 
     fn on_order_filled(&mut self, order: &Order) {
         let trade_record = TradeRecord {
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
+            timestamp: Utc::now().timestamp(),
             symbol: self.symbol.clone(),
             entry_price: order.price,
             exit_price: None,
@@ -301,10 +300,7 @@ impl TradingStrategy for MemeArbitrageStrategy {
                     stop_loss: Some(order.price * (1.0 - self.max_slippage_pct)),
                     take_profit: Some(order.price * (1.0 + self.max_slippage_pct * 2.0)),
                     side: order.side,
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64,
+                    timestamp: Utc::now().timestamp(),
                     ..Default::default()
                 });
 

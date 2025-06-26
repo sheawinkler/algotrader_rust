@@ -1,12 +1,11 @@
 //! Configuration management for the trading system.
 
+use crate::strategies::StrategyConfig as RichStrategyConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
-use crate::strategies::StrategyConfig as RichStrategyConfig;
 
 /// Main configuration structure for the trading system
 #[derive(Debug, Clone, Serialize, Deserialize)]
-
 
 pub struct Config {
     /// General application settings

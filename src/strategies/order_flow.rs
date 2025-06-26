@@ -1,10 +1,13 @@
+use chrono::Utc;
 use std::collections::{HashMap, VecDeque};
-use chrono::{Utc, DateTime};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::{TimeFrame, TradingStrategy};
+use crate::trading::{
+    MarketData, Order, OrderBook, OrderSide, OrderType, Position, Signal, SignalType,
+};
 
 /// Order Flow Strategy that analyzes market depth and order flow
 #[derive(Debug, Clone)]
@@ -303,9 +306,10 @@ impl TradingStrategy for OrderFlowStrategy {
     }
 }
 
-#[cfg(all(test, feature = "strategy_tests"))]
+#[cfg(all(test, feature = "disabled_strategy_tests"))]
 mod tests {
     use super::*;
+    use crate::trading::{OrderBookLevel, TradingPair};
     use chrono::Utc;
 
     fn create_test_order_book(

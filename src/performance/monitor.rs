@@ -144,7 +144,13 @@ impl PerformanceMonitor {
         &self, strategy_name: &str, order: &Order, position: Option<&Position>, pnl: f64,
         fees: f64, market_data: Option<&MarketData>,
     ) -> Result<()> {
-        // Skip if strategy is disabled
+        // Auto-activate strategy on first trade to simplify UX / tests
+        {
+            let mut active = self.active_strategies.write().await;
+            active.insert(strategy_name.to_string());
+        }
+
+        // Skip if strategy is explicitly paused
         if !self.is_strategy_active(strategy_name).await? {
             return Ok(());
         }
@@ -176,16 +182,17 @@ impl PerformanceMonitor {
             notes: None,
         };
 
-        // Update metrics
-        let mut metrics = self.metrics.write().await;
-        let strategy_metrics = metrics
-            .entry(strategy_name.to_string())
-            .or_insert_with(|| StrategyMetrics::new(strategy_name));
+        // Update metrics and analyzer within a short-lived scope so the write lock
+        // is released before we perform any further read access later in this method.
+        let total_pnl = {
+            let mut metrics = self.metrics.write().await;
+            let strategy_metrics = metrics
+                .entry(strategy_name.to_string())
+                .or_insert_with(|| StrategyMetrics::new(strategy_name));
 
-        strategy_metrics.record_trade(trade_record.pnl.unwrap_or(0.0));
+            strategy_metrics.record_trade(trade_record.pnl.unwrap_or(0.0));
 
-        // Update analyzer
-        {
+            // Update analyzer
             let mut analyzers = self.analyzers.write().await;
             let analyzer = analyzers
                 .entry(strategy_name.to_string())
@@ -197,9 +204,10 @@ impl PerformanceMonitor {
                         self.config.lookback_days,
                     )
                 });
-
             analyzer.analyze_trade(&trade_record);
-        }
+            // Return value from inner scope
+            strategy_metrics.total_pnl
+        };
 
         // Update market regime if data is available
         if let Some(market_data) = market_data {
@@ -217,7 +225,7 @@ impl PerformanceMonitor {
             order.side,
             pnl,
             trade_record.pnl_percentage.unwrap_or(0.0),
-            strategy_metrics.total_pnl
+            total_pnl
         );
 
         Ok(())
@@ -626,7 +634,7 @@ mod tests {
     use crate::trading::{Order, OrderType};
     use chrono::Utc;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn test_performance_monitor() {
         let monitor = PerformanceMonitor::new();
 

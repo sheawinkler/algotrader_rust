@@ -271,7 +271,9 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg(feature = "solana-online-tests")]
     #[tokio::test]
+    #[ignore]
     async fn test_get_token_accounts() {
         let config = SolanaClientConfig::default();
         let keypair = Keypair::new();

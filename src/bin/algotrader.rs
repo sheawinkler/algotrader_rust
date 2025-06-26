@@ -5,7 +5,7 @@
 use algotraderv2::config::Config;
 use anyhow::{Context, Result};
 use axum::{response::IntoResponse, routing::get, Router};
-use bs58;
+
 use clap::Parser;
 use std::{net::SocketAddr, path::Path};
 
@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
                     );
                 } else {
                     let tf = timeframe.as_deref().unwrap_or("default");
-                    let out_path = output.as_ref().map(|s| std::path::Path::new(s));
+                    let out_path = output.as_ref().map(std::path::Path::new);
                     use algotraderv2::backtest::SimMode;
                     simple_backtest(std::path::Path::new(&data), tf, SimMode::Bar, out_path)
                         .await?;
@@ -138,11 +138,11 @@ async fn main() -> Result<()> {
                 use std::path::PathBuf;
 
                 // Aggregate symbols from CLI and wallet (if provided)
-                let mut symbols: Vec<String> = base.iter().cloned().collect();
+                let mut symbols: Vec<String> = base.clone();
                 if let Some(w) = wallet {
                     let rpc = std::env::var("SOLANA_RPC_URL")
                         .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".into());
-                    match get_wallet_token_symbols(&w, &rpc) {
+                    match get_wallet_token_symbols(w, &rpc) {
                         | Ok(mut s) => symbols.append(&mut s),
                         | Err(e) => eprintln!("Wallet scan failed: {e}"),
                     }
@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                std::fs::create_dir_all(&out_dir)?;
+                std::fs::create_dir_all(Path::new(&out_dir))?;
                 println!(
                     "⬇️  Importing {} symbols (quote {}, tf {}, limit {})",
                     symbols.len(),
@@ -170,7 +170,7 @@ async fn main() -> Result<()> {
                         timeframe
                     ));
                     if let Err(e) = algotraderv2::backtest::importer::download_to_csv(
-                        sym, &quote, &timeframe, *limit, &file,
+                        sym, quote, timeframe, *limit, &file,
                     )
                     .await
                     {
@@ -246,7 +246,6 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
 
     // --- Example minimal runtime task: periodically log wallet balance ---
     use std::net::TcpListener;
-    use tokio::time::{sleep, Duration};
 
     // --- Launch TradingEngine -------------------------------------------------
     // Spawn a placeholder background task (system metrics collection TBD)

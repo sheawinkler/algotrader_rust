@@ -114,7 +114,7 @@ pub struct TradingConfig {
     #[serde(default = "default_split_delay_ms")]
     pub split_delay_ms: u64,
     // ---------- helper defaults below ----------
- }
+}
 
 /// Sidecar (Python ML) configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,7 +133,9 @@ pub struct SidecarConfig {
 fn default_sidecar_endpoint() -> String {
     "http://127.0.0.1:8000".to_string()
 }
-fn default_sidecar_weight() -> f64 { 0.5 }
+fn default_sidecar_weight() -> f64 {
+    0.5
+}
 
 /// Risk management configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
