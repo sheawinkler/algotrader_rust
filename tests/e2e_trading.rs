@@ -7,7 +7,7 @@ use algotraderv2_rust::{config::Config, TradingEngine};
 #[tokio::test]
 async fn trading_engine_smoke_test() {
     // Initialize engine in paper-trading mode with default config
-    let mut engine = TradingEngine::with_config(Config::default(), true);
+    let mut engine = TradingEngine::with_config_async(Config::default(), true).await;
 
     // Basic public method calls compile & run
     engine.enforce_risk();

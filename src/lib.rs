@@ -20,11 +20,11 @@ pub mod performance;
 pub mod persistence;
 pub mod portfolio;
 pub mod risk;
+#[cfg(feature = "sidecar")]
+pub mod sidecar;
 pub mod strategies; // unified rich strategy module
 pub mod trading;
 pub mod utils;
-#[cfg(feature = "sidecar")]
-pub mod sidecar;
 
 pub mod dashboard;
 pub mod market_data;
@@ -131,8 +131,8 @@ pub struct TradingEngine {
     pub persistence: std::sync::Arc<dyn Persistence + Send + Sync>,
     retry_tx: tokio::sync::mpsc::UnboundedSender<crate::utils::types::PendingOrder>,
     retry_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::utils::types::PendingOrder>>,
-        #[cfg(feature = "sidecar")]
-        sidecar_client: Option<crate::sidecar::SidecarClient>,
+    #[cfg(feature = "sidecar")]
+    sidecar_client: Option<crate::sidecar::SidecarClient>,
 
     // Arbitrage stub
     pub paper_trading: bool,
@@ -863,6 +863,7 @@ impl TradingEngine {
             },
             price: sig.price,
             size: sig.size,
+            confidence: sig.confidence,
             order_type: sig.order_type,
             limit_price: sig.limit_price,
             stop_price: sig.stop_price,
@@ -930,30 +931,51 @@ impl TradingEngine {
         Ok(())
     }
 
+    #[cfg_attr(not(feature = "sidecar"), allow(unused_mut))]
     async fn handle_signals(&mut self, mut signals: Vec<Signal>) -> anyhow::Result<()> {
         #[cfg(feature = "sidecar")]
         if let Some(sc) = &self.sidecar_client {
             if let Some(cfg) = &self.config.sidecar {
                 if cfg.enabled {
+                    let weight = cfg.weight.clamp(0.0, 1.0);
+                    // Down-weight local engine signals
+                    for sig in signals.iter_mut() {
+                        sig.confidence *= 1.0 - weight;
+                    }
                     if let Ok(feat) = serde_json::to_value(&signals) {
                         match sc.predict(feat).await {
-                            Ok(resp) => {
-                                // Try to parse array of signals directly, otherwise look for {"signals": [...]}
-                                let sidecar_sigs: Vec<Signal> = if let Ok(vec) = serde_json::from_value::<Vec<Signal>>(resp.clone()) {
+                            | Ok(resp) => {
+                                let sidecar_sigs: Vec<Signal> = if let Ok(vec) =
+                                    serde_json::from_value::<Vec<Signal>>(resp.clone())
+                                {
                                     vec
-                                } else if let Some(arr) = resp.get("signals").and_then(|v| v.as_array()) {
-                                    serde_json::from_value::<Vec<Signal>>(serde_json::Value::Array(arr.clone()))
-                                        .unwrap_or_default()
+                                } else if let Some(arr) =
+                                    resp.get("signals").and_then(|v| v.as_array())
+                                {
+                                    serde_json::from_value::<Vec<Signal>>(serde_json::Value::Array(
+                                        arr.clone(),
+                                    ))
+                                    .unwrap_or_default()
                                 } else {
                                     Vec::new()
                                 };
                                 if !sidecar_sigs.is_empty() {
-                                    log::info!("Blended {} sidecar signals (weight {:.2})", sidecar_sigs.len(), cfg.weight);
-                                    // TODO: weight-based blending – for now just append
-                                    signals.extend(sidecar_sigs);
+                                    log::info!(
+                                        "Blended {} sidecar signals (weight {:.2})",
+                                        sidecar_sigs.len(),
+                                        weight
+                                    );
+                                    let mut scaled = sidecar_sigs
+                                        .into_iter()
+                                        .map(|mut s| {
+                                            s.confidence *= weight;
+                                            s
+                                        })
+                                        .collect::<Vec<_>>();
+                                    signals.append(&mut scaled);
                                 }
                             }
-                            Err(e) => log::warn!("Sidecar predict error: {}", e),
+                            | Err(e) => log::warn!("Sidecar predict error: {}", e),
                         }
                     }
                 }
@@ -1264,9 +1286,9 @@ impl Default for TradingEngine {
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
 
     #[test]
     fn test_trading_engine_initialization() {
@@ -1274,9 +1296,9 @@ mod tests {
         // Add assertions
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_trading_engine_start() {
-        let engine = TradingEngine::new();
+        let engine = TradingEngine::with_config_async(Config::default(), false).await;
         assert!(engine.start().await.is_ok());
     }
 }
