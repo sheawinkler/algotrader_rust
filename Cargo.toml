@@ -34,6 +34,7 @@ dashboard = []
 sidecar = []
 disabled_strategy_tests = []
 solana-online-tests = []
+db = []
 
 [profile.release]
 opt-level = 3
@@ -138,6 +139,11 @@ ordered-float = "2.0"
 ta = { version = "0.5", features = ["serde"] }
 statrs = "0.16"
 plotly = { version = "0.8", features = ["image"], optional = true }
+# --- v3 data-layer dependencies ---
+tokio-postgres = "0.7"
+deadpool-postgres = { version = "0.12" }
+redis = { version = "0.23", features = ["tokio-comp"] }
+clickhouse-rs = { version = "1.1.0-alpha.1" }
 statistical = "1.0"
 
 # Async utilities

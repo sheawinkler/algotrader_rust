@@ -30,6 +30,9 @@ pub mod dashboard;
 pub mod market_data;
 pub mod wallet;
 
+#[cfg(feature = "db")]
+pub mod data_layer;
+
 // Import wallet module
 use crate::wallet::Wallet;
 

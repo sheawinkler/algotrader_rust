@@ -67,6 +67,9 @@ enum Command {
         out_dir: String,
     },
     /// Start live / paper trading using the configured engine
+    /// Verify DB connections (requires `--features db`)
+    DbPing,
+
     Run {
         /// Enable paper-trading (no real orders)
         #[arg(long)]
@@ -178,6 +181,28 @@ async fn main() -> Result<()> {
                     }
                 }
                 println!("✅ Import complete. Files in {}", out_dir);
+                return Ok(());
+            }
+            | Command::DbPing => {
+                #[cfg(feature = "db")]
+                {
+                    use algotraderv2::data_layer::DataLayer;
+                    let pg_url = std::env::var("PG_URL").unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/trading".into());
+                    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".into());
+                    let ch_url = std::env::var("CH_URL").unwrap_or_else(|_| "tcp://localhost:9000".into());
+                    match DataLayer::initialise(&pg_url, &redis_url, &ch_url).await {
+                        Ok(_) => println!("✅ All data stores pinged successfully"),
+                        Err(e) => {
+                            eprintln!("❌ Connection check failed: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                #[cfg(not(feature = "db"))]
+                {
+                    eprintln!("Binary built without `db` feature; rebuild with --features db");
+                    std::process::exit(1);
+                }
                 return Ok(());
             }
             | Command::Run { paper } => {

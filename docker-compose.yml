@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # -----------------------------------------------------------
+  # TimescaleDB (PostgreSQL + Timescale + pgvector extensions)
+  # -----------------------------------------------------------
+  timescaledb:
+    image: timescale/timescaledb-postgis:latest-pg14
+    container_name: algotrader_timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: trading
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      retries: 5
+
+  # ----------------------
+  # Redis (hot cache)
+  # ----------------------
+  redis:
+    image: redis:7-alpine
+    container_name: algotrader_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # ----------------------------------------
+  # ClickHouse (analytics / heavy queries)
+  # ----------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: algotrader_clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: trading
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native TCP interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+volumes:
+  timescale_data:
+  redis_data:
+  clickhouse_data:
