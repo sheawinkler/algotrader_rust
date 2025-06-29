@@ -150,7 +150,7 @@ pub struct BirdeyeProvider {
 impl BirdeyeProvider {
     pub fn new() -> Self {
         let key = std::env::var("BIRDEYE_API_KEY").unwrap_or_default();
-        Self { api_key: key, resolver: DexScreenerResolver::default() }
+        Self { api_key: key, resolver: DexScreenerResolver }
     }
 }
 
@@ -300,9 +300,10 @@ impl RemoteHistoricalDataProvider for CryptoCompareProvider {
         let resp = reqwest::get(&url).await?.error_for_status()?;
         let payload: CcResponse = resp.json().await?;
         if payload.status != "Success" {
-            return Err(crate::Error::DataError(
-                format!("CryptoCompare API error: {}", payload.message).into(),
-            ));
+            return Err(crate::Error::DataError(format!(
+                "CryptoCompare API error: {}",
+                payload.message
+            )));
         }
 
         let candles_json = payload

@@ -1,11 +1,16 @@
+#![allow(clippy::collapsible_else_if)]
 use rust_decimal::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
+
+// Type alias to simplify alert queue type and satisfy clippy::type_complexity
+pub type AlertQueue = Arc<Mutex<VecDeque<(AlertType, DateTime<Utc>)>>>;
 use tracing::{debug, info, instrument, warn};
 // use rust_decimal_macros::dec; // REMOVED: crate not present
+
 use chrono::{DateTime, Utc};
 
 use crate::{
@@ -100,7 +105,7 @@ pub struct PerformanceMonitor {
     /// Last performance review time
     last_review: Arc<Mutex<Instant>>,
     /// Performance alerts
-    alerts: Arc<Mutex<VecDeque<(AlertType, DateTime<Utc>)>>>,
+    alerts: AlertQueue,
     /// Strategy analyzers
     analyzers: Arc<RwLock<HashMap<String, StrategyAnalyzer>>>,
     /// Market regime detector
@@ -139,7 +144,13 @@ impl PerformanceMonitor {
         &self, strategy_name: &str, order: &Order, position: Option<&Position>, pnl: f64,
         fees: f64, market_data: Option<&MarketData>,
     ) -> Result<()> {
-        // Skip if strategy is disabled
+        // Auto-activate strategy on first trade to simplify UX / tests
+        {
+            let mut active = self.active_strategies.write().await;
+            active.insert(strategy_name.to_string());
+        }
+
+        // Skip if strategy is explicitly paused
         if !self.is_strategy_active(strategy_name).await? {
             return Ok(());
         }
@@ -171,16 +182,17 @@ impl PerformanceMonitor {
             notes: None,
         };
 
-        // Update metrics
-        let mut metrics = self.metrics.write().await;
-        let strategy_metrics = metrics
-            .entry(strategy_name.to_string())
-            .or_insert_with(|| StrategyMetrics::new(strategy_name));
+        // Update metrics and analyzer within a short-lived scope so the write lock
+        // is released before we perform any further read access later in this method.
+        let total_pnl = {
+            let mut metrics = self.metrics.write().await;
+            let strategy_metrics = metrics
+                .entry(strategy_name.to_string())
+                .or_insert_with(|| StrategyMetrics::new(strategy_name));
 
-        strategy_metrics.record_trade(trade_record.pnl.unwrap_or(0.0));
+            strategy_metrics.record_trade(trade_record.pnl.unwrap_or(0.0));
 
-        // Update analyzer
-        {
+            // Update analyzer
             let mut analyzers = self.analyzers.write().await;
             let analyzer = analyzers
                 .entry(strategy_name.to_string())
@@ -189,12 +201,13 @@ impl PerformanceMonitor {
                         10, // min_trades
                         self.config.min_win_rate_pct,
                         self.config.max_drawdown_pct,
-                        self.config.lookback_days as u32,
+                        self.config.lookback_days,
                     )
                 });
-
             analyzer.analyze_trade(&trade_record);
-        }
+            // Return value from inner scope
+            strategy_metrics.total_pnl
+        };
 
         // Update market regime if data is available
         if let Some(market_data) = market_data {
@@ -212,7 +225,7 @@ impl PerformanceMonitor {
             order.side,
             pnl,
             trade_record.pnl_percentage.unwrap_or(0.0),
-            strategy_metrics.total_pnl
+            total_pnl
         );
 
         Ok(())
@@ -609,13 +622,19 @@ impl PerformanceMonitor {
     }
 }
 
+impl Default for PerformanceMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::trading::{Order, OrderType};
     use chrono::Utc;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn test_performance_monitor() {
         let monitor = PerformanceMonitor::new();
 

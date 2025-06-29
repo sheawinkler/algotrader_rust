@@ -2,6 +2,7 @@
 //! This is an early, minimal implementation. Over time this should evolve to load
 //! strategies from configuration files or at runtime.
 
+use crate::strategies::trend_following::TrendFollowingConfig;
 use crate::strategies::TradingStrategyClone;
 use crate::strategies::*;
 
@@ -12,7 +13,7 @@ pub fn default_strategies() -> Vec<Box<dyn TradingStrategyClone>> {
     vec![
         Box::new(MeanReversionStrategy::new("UNK/UNK", TimeFrame::OneHour, 20, 2.0, 2.0, 1.0))
             as Box<dyn TradingStrategyClone>,
-        Box::new(TrendFollowingStrategy::new(
+        Box::new(TrendFollowingStrategy::new(TrendFollowingConfig::new(
             "UNK/UNK",
             TimeFrame::OneHour,
             9,
@@ -23,10 +24,10 @@ pub fn default_strategies() -> Vec<Box<dyn TradingStrategyClone>> {
             9,    // MACD fast/slow/signal
             14,   // ADX period
             14,   // ATR period
-            0.02, // trailing stop 2%
-            0.25, // max drawdown 25%
-            0.10, // position size 10%
-        )) as Box<dyn TradingStrategyClone>,
+            2.0,  // trailing stop %
+            25.0, // max drawdown %
+            10.0, // position size %
+        ))) as Box<dyn TradingStrategyClone>,
         Box::new(MomentumStrategy::new("UNK/UNK")) as Box<dyn TradingStrategyClone>,
     ]
 }

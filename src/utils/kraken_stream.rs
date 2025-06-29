@@ -7,6 +7,7 @@ use serde_json::Value;
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
+#[derive(Clone, Debug)]
 pub struct KrakenStream {
     pub url: String,
 }
@@ -15,6 +16,13 @@ impl KrakenStream {
     pub fn new() -> Self {
         let url = "wss://ws.kraken.com".to_string();
         Self { url }
+    }
+}
+
+#[async_trait::async_trait]
+impl Default for KrakenStream {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -50,7 +58,7 @@ impl ChannelMarketDataStream for KrakenStream {
                             for trade in trades {
                                 if let Some(trade_arr) = trade.as_array() {
                                     let price = trade_arr
-                                        .get(0)
+                                        .first()
                                         .and_then(|v| v.as_str())
                                         .and_then(|s| s.parse().ok())
                                         .unwrap_or(0.0);

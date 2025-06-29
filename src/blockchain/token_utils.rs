@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn test_get_token_balance() {
-        let mut data = vec![0u8; 165];
+        let data = vec![0u8; 165];
         let mut account = TokenAccount::unpack_unchecked(&data).unwrap();
         account.amount = 1_500_000_000; // 1.5 SOL (9 decimals)
                                         // decimals stored separately, pass as param below

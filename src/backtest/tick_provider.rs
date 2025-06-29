@@ -6,7 +6,7 @@ use csv::ReaderBuilder;
 use serde::Deserialize;
 use std::fs;
 use std::io::Cursor;
-use std::path::PathBuf;
+use std::path::Path;
 
 /// CSV schema for tick data: timestamp,price,qty
 #[derive(Debug, Deserialize)]
@@ -25,10 +25,16 @@ impl CSVTicksProvider {
     }
 }
 
+impl Default for CSVTicksProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HistoricalDataProvider for CSVTicksProvider {
-    fn load(&self, data_file: &PathBuf) -> Result<Vec<MarketData>> {
+    fn load(&self, data_file: &Path) -> Result<Vec<MarketData>> {
         let no_cache = std::env::var("BACKTEST_NO_CACHE").is_ok();
-        let key = cache::build_key(&["tickcsv", data_file.to_string_lossy().as_ref()]);
+        let key = cache::build_key(&["ticks", data_file.to_string_lossy().as_ref()]);
         let raw_bytes = if !no_cache {
             if let Some(b) = cache::get_raw(&key)? {
                 b

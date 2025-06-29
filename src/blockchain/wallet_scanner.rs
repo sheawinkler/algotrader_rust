@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Deserialize;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
@@ -24,17 +25,14 @@ pub fn get_wallet_token_symbols(owner: &str, rpc_url: &str) -> Result<Vec<String
     for RpcKeyedAccount { account, .. } in accounts {
         // account.data is UiAccountData; extract raw bytes from Base64
         if let solana_account_decoder::UiAccountData::Binary(data_b64, _) = &account.data {
-            if let Ok(raw) = base64::decode(data_b64) {
+            if let Ok(raw) = STANDARD.decode(data_b64) {
                 if let Ok(ta) = TokenAccount::unpack(&raw) {
                     if ta.amount == 0 {
                         continue;
                     }
                     let mint_str = ta.mint.to_string();
-                    if let Ok(sym) = symbol_for_mint(&mint_str) {
-                        symbols.push(sym);
-                    } else {
-                        symbols.push(mint_str);
-                    }
+                    let symbol = symbol_for_mint(&mint_str).unwrap_or(mint_str);
+                    symbols.push(symbol);
                 }
             }
         }

@@ -141,7 +141,7 @@ impl Cli {
                     anyhow::bail!("Data file not found: {}", path.display());
                 }
                 println!("Running backtest on {}...", path.display());
-                crate::backtest::simple_backtest(&path, &timeframe, sim_mode, None).await
+                crate::backtest::simple_backtest(path.as_path(), &timeframe, sim_mode, None).await
             }
             Commands::Init { output, commented } => {
                 self.handle_init(output, commented)
@@ -156,7 +156,7 @@ impl Cli {
                 if !data.exists() { anyhow::bail!("Data file not found: {}", data.display()); }
                 println!("Running walk-forward optimization on {}...", data.display());
                 let cfg = crate::backtest::harness::WalkForwardConfig { train_days: train, test_days: test, step_days: step };
-                let reports = crate::backtest::harness::run_walk_forward(&data, &timeframe, sim_mode, cfg).await?;
+                let reports = crate::backtest::harness::run_walk_forward(data.as_path(), &timeframe, sim_mode, cfg).await?;
                 if reports.is_empty() {
                     println!("No reports generated (perhaps insufficient data)");
                 } else {
@@ -240,7 +240,7 @@ impl Cli {
             anyhow::bail!("Data file not found: {}", path.display());
         }
         println!("Running backtest on {}...", path.display());
-        crate::backtest::simple_backtest(&path, &timeframe, sim_mode, None).await
+        crate::backtest::simple_backtest(path.as_path(), &timeframe, sim_mode, None).await
     }
 
     async fn handle_wallet(&self, command: WalletCommands) -> Result<()> {

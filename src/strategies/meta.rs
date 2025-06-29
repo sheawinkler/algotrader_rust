@@ -20,7 +20,7 @@ impl EnsembleStrategy {
     /// Build a new ensemble. All sub-strategies must share the same timeframe.
     pub fn new(name: &str, strategies: Vec<Box<dyn TradingStrategy>>) -> Self {
         let timeframe = strategies
-            .get(0)
+            .first()
             .map(|s| s.timeframe())
             .unwrap_or(TimeFrame::OneHour);
         Self { name: name.to_string(), timeframe, sub_strategies: strategies }

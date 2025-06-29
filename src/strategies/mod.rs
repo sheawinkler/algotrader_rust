@@ -247,29 +247,32 @@ impl StrategyFactory {
     fn wrap_with_performance_monitor(
         strategy: Box<dyn TradingStrategy>, perf_config: &PerformanceConfig,
     ) -> Box<dyn TradingStrategy> {
-        // Create performance monitor
-        let monitor = PerformanceMonitor::new(
-            Duration::from_secs(perf_config.review_interval_minutes * 60),
-            perf_config.max_consecutive_losses,
-            perf_config.max_drawdown_pct,
-            perf_config.min_win_rate_pct,
-        );
+        // TEMP: Skip PerformanceAware wrapping for now until AdaptiveStrategy is implemented for all.
+        strategy
 
-        // Create strategy analyzer
-        let analyzer = StrategyAnalyzer::new(
-            10, // min_trades
-            perf_config.min_win_rate_pct,
-            perf_config.max_drawdown_pct,
-            perf_config.lookback_days,
-        );
+        /* Create performance monitor
+                let monitor = PerformanceMonitor::new(
+                    Duration::from_secs(perf_config.review_interval_minutes * 60),
+                    perf_config.max_consecutive_losses,
+        {{ ... }}
+                    perf_config.min_win_rate_pct,
+                );
 
-        // For now, use empty initial parameter set until AdaptiveStrategy support is integrated
-        let initial_params: HashMap<String, f64> = HashMap::new();
+                // Create strategy analyzer
+                let analyzer = StrategyAnalyzer::new(
+                    10, // min_trades
+                    perf_config.min_win_rate_pct,
+                    perf_config.max_drawdown_pct,
+                    perf_config.lookback_days,
+                );
 
-        // Create performance-aware wrapper
-        let wrapped = PerformanceAwareStrategy::new(strategy, monitor, analyzer, initial_params);
+                // For now, use empty initial parameter set until AdaptiveStrategy support is integrated
+                let initial_params: HashMap<String, f64> = HashMap::new();
 
-        Box::new(wrapped)
+                // Create performance-aware wrapper
+                let wrapped = PerformanceAwareStrategy::new(strategy, monitor, analyzer, initial_params);
+
+                Box::new(wrapped) */
     }
 }
 

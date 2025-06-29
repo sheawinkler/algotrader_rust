@@ -209,10 +209,10 @@ mod tests {
     use solana_sdk::signer::keypair::Keypair;
     use std::path::PathBuf;
 
+    use solana_sdk::signer::Signer;
     fn create_test_keypair() -> Keypair {
-        let mut key = [0u8; 32];
-        key[0] = 1; // Just some dummy key
-        Keypair::from_bytes(&key).unwrap()
+        // Generate a fresh random keypair for testing
+        Keypair::new()
     }
 
     #[tokio::test]

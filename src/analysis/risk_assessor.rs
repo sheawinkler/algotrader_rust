@@ -196,6 +196,12 @@ pub struct RiskAssessor {
     cache_ttl: chrono::Duration, // How long to cache assessments
 }
 
+impl Default for RiskAssessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RiskAssessor {
     /// Create a new RiskAssessor with default configuration
     pub fn new() -> Self {

@@ -109,12 +109,13 @@ impl Portfolio {
 
     /// Export current portfolio state to a CSV file at the given path.
     /// CSV columns: symbol,size,avg_entry_price,realized_pnl,unrealized_pnl
+    #[allow(clippy::needless_borrows_for_generic_args)]
     pub fn export_csv(
         &self, path: &std::path::Path, price_lookup: &impl Fn(&TradingPair) -> Option<f64>,
     ) -> std::io::Result<()> {
         use std::io::Write;
         let mut wtr = csv::Writer::from_path(path)?;
-        wtr.write_record(&["symbol", "size", "avg_entry_price", "realized_pnl", "unrealized_pnl"])?;
+        wtr.write_record(["symbol", "size", "avg_entry_price", "realized_pnl", "unrealized_pnl"])?;
         for (sym, pos) in &self.positions {
             let pair_parts: Vec<&str> = sym.split('/').collect();
             let unreal = if pair_parts.len() == 2 {
@@ -134,7 +135,7 @@ impl Portfolio {
             ])?;
         }
         // Cash row (for completeness)
-        wtr.write_record(&["CASH", "0", "0", &self.total_realized_pnl.to_string(), "0"])?;
+        wtr.write_record(["CASH", "0", "0", &self.total_realized_pnl.to_string(), "0"])?;
         wtr.flush()?;
         Ok(())
     }

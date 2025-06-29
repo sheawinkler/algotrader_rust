@@ -13,7 +13,7 @@ This document outlines the development roadmap for AlgoTraderV2 Rust, including 
 - [x] Unit tests and CI/CD pipeline
 - [x] Advanced execution engine (slippage limits, fee caps, chunked order splitting with jittered delays, wallet rotation)
 
-## Version 0.2.0 - Enhanced Features (Next)
+## Version 0.2.0 - Enhanced Features (Completed)
 - [ ] Deployment & self-configuration feature
 - [ ] Advanced order types (limit, stop-loss, take-profit)
 - [ ] Portfolio management and tracking
@@ -30,6 +30,15 @@ This document outlines the development roadmap for AlgoTraderV2 Rust, including 
 - [ ] More sophisticated indicators and strategies
 - [ ] Multi-asset portfolio optimization
 - [ ] Advanced charting capabilities
+
+## Version 0.3.0 - ML Sidecar & Hybrid Backtesting (Next)
+- [ ] Build Python FastAPI sidecar exposing `/ping`, `/predict`, and `/feature` endpoints
+- [ ] Containerise sidecar with Docker and add CI build pipeline
+- [ ] Finalise Rust `SidecarClient` schema, circuit-breaker, and retry logic
+- [ ] Integrate sidecar signals into `MetaStrategyManager` with confidence weighting
+- [ ] Extend backtester to call sidecar during simulations; run walk-forward optimisation (Sharpe, max DD)
+- [ ] Persist sidecar features, predictions, and realised PnL for offline analysis
+- [ ] Prepare deployment manifests (Docker-Compose / Helm) for orchestrated trading stack
 
 ## Version 0.4.0 - Scaling & Performance
 - [ ] Performance optimization

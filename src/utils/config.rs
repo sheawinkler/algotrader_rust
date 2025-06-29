@@ -1,11 +1,11 @@
 //! Configuration management for the trading system.
 
+use crate::strategies::StrategyConfig as RichStrategyConfig;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
 
 /// Main configuration structure for the trading system
 #[derive(Debug, Clone, Serialize, Deserialize)]
-use crate::strategies::StrategyConfig as RichStrategyConfig;
 
 pub struct Config {
     /// General application settings
@@ -69,7 +69,7 @@ impl Default for Config {
         dex_config
             .insert("jupiter".to_string(), DexConfig { enabled: true, params: HashMap::new() });
 
-        let mut strategies = HashMap::new();
+        let mut strategy_settings = HashMap::new();
         strategy_settings.insert(
             "mean_reversion".to_string(),
             StrategySettings {
@@ -144,8 +144,8 @@ impl Config {
     }
 
     /// Get a strategy configuration by name
-    pub fn get_strategy_config(&self, name: &str) -> Option<&StrategyConfig> {
-        self.strategies.get(name)
+    pub fn get_strategy_config(&self, name: &str) -> Option<&RichStrategyConfig> {
+        self.strategies.iter().find(|s| s.name == name)
     }
 
     /// Get the default configuration as a TOML string
@@ -165,8 +165,8 @@ mod tests {
         assert_eq!(config.app.log_level, "info");
         assert_eq!(config.trading.default_pair, "SOL/USDC");
         assert!(config.dex.contains_key("jupiter"));
-        assert!(config.strategies.contains_key("mean_reversion"));
-        assert!(config.strategies.contains_key("momentum"));
+        assert!(config.strategy_settings.contains_key("mean_reversion"));
+        assert!(config.strategy_settings.contains_key("momentum"));
     }
 
     #[test]

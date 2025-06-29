@@ -5,7 +5,7 @@
 use algotraderv2::config::Config;
 use anyhow::{Context, Result};
 use axum::{response::IntoResponse, routing::get, Router};
-use bs58;
+
 use clap::Parser;
 use std::{net::SocketAddr, path::Path};
 
@@ -67,6 +67,9 @@ enum Command {
         out_dir: String,
     },
     /// Start live / paper trading using the configured engine
+    /// Verify DB connections (requires `--features db`)
+    DbPing,
+
     Run {
         /// Enable paper-trading (no real orders)
         #[arg(long)]
@@ -126,9 +129,9 @@ async fn main() -> Result<()> {
                     );
                 } else {
                     let tf = timeframe.as_deref().unwrap_or("default");
-                    let out_path = output.as_ref().map(|s| std::path::Path::new(s));
+                    let out_path = output.as_ref().map(std::path::Path::new);
                     use algotraderv2::backtest::SimMode;
-                    simple_backtest(&std::path::PathBuf::from(data), tf, SimMode::Bar, out_path)
+                    simple_backtest(std::path::Path::new(&data), tf, SimMode::Bar, out_path)
                         .await?;
                 }
                 return Ok(());
@@ -138,11 +141,11 @@ async fn main() -> Result<()> {
                 use std::path::PathBuf;
 
                 // Aggregate symbols from CLI and wallet (if provided)
-                let mut symbols: Vec<String> = base.iter().cloned().collect();
+                let mut symbols: Vec<String> = base.clone();
                 if let Some(w) = wallet {
                     let rpc = std::env::var("SOLANA_RPC_URL")
                         .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".into());
-                    match get_wallet_token_symbols(&w, &rpc) {
+                    match get_wallet_token_symbols(w, &rpc) {
                         | Ok(mut s) => symbols.append(&mut s),
                         | Err(e) => eprintln!("Wallet scan failed: {e}"),
                     }
@@ -154,7 +157,7 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                std::fs::create_dir_all(&out_dir)?;
+                std::fs::create_dir_all(Path::new(&out_dir))?;
                 println!(
                     "⬇️  Importing {} symbols (quote {}, tf {}, limit {})",
                     symbols.len(),
@@ -170,7 +173,7 @@ async fn main() -> Result<()> {
                         timeframe
                     ));
                     if let Err(e) = algotraderv2::backtest::importer::download_to_csv(
-                        sym, &quote, &timeframe, *limit, &file,
+                        sym, quote, timeframe, *limit, &file,
                     )
                     .await
                     {
@@ -178,6 +181,28 @@ async fn main() -> Result<()> {
                     }
                 }
                 println!("✅ Import complete. Files in {}", out_dir);
+                return Ok(());
+            }
+            | Command::DbPing => {
+                #[cfg(feature = "db")]
+                {
+                    use algotraderv2::data_layer::DataLayer;
+                    let pg_url = std::env::var("PG_URL").unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/trading".into());
+                    let redis_url = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".into());
+                    let ch_url = std::env::var("CH_URL").unwrap_or_else(|_| "tcp://localhost:9000".into());
+                    match DataLayer::initialise(&pg_url, &redis_url, &ch_url).await {
+                        Ok(_) => println!("✅ All data stores pinged successfully"),
+                        Err(e) => {
+                            eprintln!("❌ Connection check failed: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                #[cfg(not(feature = "db"))]
+                {
+                    eprintln!("Binary built without `db` feature; rebuild with --features db");
+                    std::process::exit(1);
+                }
                 return Ok(());
             }
             | Command::Run { paper } => {
@@ -245,30 +270,18 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     log::info!("Trading engine starting (paper={})", paper);
 
     // --- Example minimal runtime task: periodically log wallet balance ---
-    use solana_client::nonblocking::rpc_client::RpcClient;
-    use solana_sdk::signature::Signer;
     use std::net::TcpListener;
-    use tokio::time::{sleep, Duration};
 
     // --- Launch TradingEngine -------------------------------------------------
-    // Spawn a background task to capture system metrics every 10s
+    // Spawn a placeholder background task (system metrics collection TBD)
     tokio::spawn(async {
-        use sysinfo::{CpuExt, System, SystemExt};
-        let mut sys = System::new_all();
         loop {
-            sys.refresh_cpu();
-            sys.refresh_memory();
-            let cpu = sys.global_cpu_info().cpu_usage() as f64;
-            let mem_total = sys.total_memory() as f64;
-            let mem_used = sys.used_memory() as f64;
-            metrics::gauge!("sys_cpu_percent", cpu);
-            metrics::gauge!("sys_mem_used_bytes", mem_used);
-            metrics::gauge!("sys_mem_total_bytes", mem_total);
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            // Placeholder: hook real system metrics here once sysinfo API stabilized
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         }
     });
     use algotraderv2::TradingEngine;
-    let mut engine = TradingEngine::with_config(config.clone(), paper);
+    let mut engine = TradingEngine::with_config_async(config.clone(), paper).await;
     // Determine symbol list: use config default_pair
     let symbols = vec![config.trading.default_pair.clone()];
     // Spawn the async trading loop – runs until cancelled
@@ -284,6 +297,7 @@ async fn run_service(config: &Config, paper: bool) -> Result<()> {
     }
 
     let app = Router::new()
+        .route("/", get(|| async { "AlgoTraderV2 running" }))
         .route("/healthz", get(health))
         .route("/metrics", get(metrics_handler));
     let primary_addr: SocketAddr = "127.0.0.1:8888".parse().unwrap();

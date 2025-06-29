@@ -20,7 +20,7 @@ impl AllocationStrategy {
     pub fn new(name: &str, subs: Vec<Box<dyn TradingStrategy>>, weights: Vec<f64>) -> Self {
         assert_eq!(subs.len(), weights.len(), "weights length must match sub strategies");
         let timeframe = subs
-            .get(0)
+            .first()
             .map(|s| s.timeframe())
             .unwrap_or(TimeFrame::OneHour);
         // normalise weights (sum to 1.0)

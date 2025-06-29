@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::fs;
-use std::time::{Duration, SystemTime};
+use chrono::Utc;
+use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -415,7 +416,7 @@ impl TradingBot {
             match client.get_price(pair).await {
                 Ok(price_data) => {
                     let market_data = MarketData {
-                        timestamp: SystemTime::now(),
+                        timestamp: Utc::now().timestamp(),
                         open: price_data.open,
                         high: price_data.high,
                         low: price_data.low,
@@ -447,7 +448,7 @@ impl TradingBot {
                                 pair: pair.clone(),
                                 action: signal.action,
                                 price: signal.price,
-                                timestamp: SystemTime::now(),
+                                timestamp: Utc::now().timestamp(),
                                 dex: Some(dex_name.clone()),
                                 confidence: signal.confidence,
                             });
@@ -714,7 +715,7 @@ impl TradingBot {
     }
     
     /// Log backtest results
-    fn log_backtest_results(&self, results: &[(SystemTime, f64)], equity_curve: &[f64]) {
+    fn log_backtest_results(&self, results: &[(i64, f64)], equity_curve: &[f64]) {
         if results.is_empty() || equity_curve.is_empty() {
             return;
         }
@@ -769,8 +770,8 @@ impl TradingBot {
         // Log summary
         info!("\n=== Backtest Results ===");
         info!("Period: {} to {}", 
-            results[0].0.duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            results.last().unwrap().0.duration_since(UNIX_EPOCH).unwrap().as_secs());
+            results[0].0,
+            results.last().unwrap().0);
         info!("Initial Balance: ${:.2}", initial_balance);
         info!("Final Balance: ${:.2}", final_balance);
         info!("Total Return: {:.2}%", total_return);

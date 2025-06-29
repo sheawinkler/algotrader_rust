@@ -2,6 +2,7 @@
 //! Currently this provides basic default parameter mappings. In future we
 //! should parse `config.params` for fine-grained tuning.
 
+use super::trend_following::TrendFollowingConfig;
 use super::*;
 use std::convert::TryFrom;
 
@@ -36,7 +37,7 @@ impl TryFrom<&StrategyConfig> for MeanReversionStrategy {
 impl TryFrom<&StrategyConfig> for TrendFollowingStrategy {
     type Error = Box<dyn std::error::Error>;
     fn try_from(_cfg: &StrategyConfig) -> Result<Self, Self::Error> {
-        Ok(TrendFollowingStrategy::new(
+        Ok(TrendFollowingStrategy::new(TrendFollowingConfig::new(
             "SOL/USDC",
             TimeFrame::OneHour,
             9,
@@ -50,7 +51,7 @@ impl TryFrom<&StrategyConfig> for TrendFollowingStrategy {
             1.0,
             10.0,
             1.0,
-        ))
+        )))
     }
 }
 

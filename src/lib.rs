@@ -20,13 +20,19 @@ pub mod performance;
 pub mod persistence;
 pub mod portfolio;
 pub mod risk;
+#[cfg(feature = "sidecar")]
+pub mod sidecar;
 pub mod strategies; // unified rich strategy module
 pub mod trading;
 pub mod utils;
+pub mod signal;
 
 pub mod dashboard;
 pub mod market_data;
 pub mod wallet;
+
+#[cfg(feature = "db")]
+pub mod data_layer;
 
 // Import wallet module
 use crate::wallet::Wallet;
@@ -45,6 +51,8 @@ use crate::risk::{RiskAction, RiskRule};
 use crate::strategies::TradingStrategy;
 use crate::trading::{Signal as StratSignal, SignalType};
 use crate::utils::types::PendingOrder;
+use tokio_postgres::types::ToSql;
+use crate::signal::SignalSource;
 use crate::utils::types::{MarketData, Order, OrderSide, Signal, SignalAction, TradingPair};
 use chrono::{NaiveDateTime, Utc};
 use solana_sdk::signature::Keypair;
@@ -127,8 +135,13 @@ pub struct TradingEngine {
     dashboard_state: Option<crate::dashboard::SharedSnapshot>,
     /// Persistence backend (sqlite or null)
     pub persistence: std::sync::Arc<dyn Persistence + Send + Sync>,
+    /// Aggregated access to TimescaleDB / Redis / ClickHouse (only when compiled with `db` feature)
+    #[cfg(feature = "db")]
+    pub data_layer: Option<crate::data_layer::DataLayer>,
     retry_tx: tokio::sync::mpsc::UnboundedSender<crate::utils::types::PendingOrder>,
     retry_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::utils::types::PendingOrder>>,
+    #[cfg(feature = "sidecar")]
+    sidecar_client: Option<crate::sidecar::SidecarClient>,
 
     // Arbitrage stub
     pub paper_trading: bool,
@@ -148,6 +161,14 @@ impl TradingEngine {
         tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(Self::with_config_async(crate::config::Config::default(), false))
+    }
+
+    /// Synchronous helper that mirrors `with_config_async` but blocks on its future.
+    /// Provided mainly for tests and simple CLI usage.
+    pub fn with_config(config: crate::config::Config, paper_trading: bool) -> Self {
+        tokio::runtime::Runtime::new()
+            .expect("failed to create runtime")
+            .block_on(Self::with_config_async(config, paper_trading))
     }
     /// Construct engine from configuration
     pub async fn with_config_async(config: crate::config::Config, paper_trading: bool) -> Self {
@@ -207,7 +228,7 @@ impl TradingEngine {
         let persistence: std::sync::Arc<dyn Persistence + Send + Sync> =
             match SqlitePersistence::new(None).await {
                 | Ok(db) => std::sync::Arc::new(db),
-                | Err(_) => std::sync::Arc::new(crate::persistence::NullPersistence::default()),
+                | Err(_) => std::sync::Arc::new(crate::persistence::NullPersistence),
             };
 
         let mut strategies_vec: Vec<Box<dyn crate::strategies::TradingStrategy>> = Vec::new();
@@ -231,6 +252,9 @@ impl TradingEngine {
             price_pairs.push(TradingPair::new("SOL", "USDC"));
         }
         let price_feed_handle = market_ws::spawn_price_feed(&price_pairs, price_cache.clone());
+
+
+
         let starting_cash = config.trading.starting_balance_usd;
         let wallet_instance = if !paper_trading {
             match config.load_keypair() {
@@ -271,8 +295,76 @@ impl TradingEngine {
                 (None, None)
             }
         };
+        // --- Optional data layer initialisation ---------------------------------
+        #[cfg(feature = "db")]
+        let data_layer_opt = {
+            use crate::data_layer::DataLayer;
+            let pg = std::env::var("PG_URL").unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
+            let redis = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+            let ch = std::env::var("CH_URL").unwrap_or_else(|_| "tcp://127.0.0.1:9000".to_string());
+            match DataLayer::initialise(&pg, &redis, &ch).await {
+                Ok(dl) => Some(dl),
+                Err(e) => {
+                    log::error!("Failed to initialise data layer: {e}");
+                    None
+                }
+            }
+        };
+
         // spawn scheduler
         let tx_clone = retry_tx.clone();
+        // -------------------------------- Price cache → DB sink -------------------
+        #[cfg(feature = "db")]
+        if let Some(dl_ref) = data_layer_opt.as_ref() {
+            let pg_sink = dl_ref.pg.clone();
+            let cache_for_sink = price_cache.clone();
+            tokio::spawn(async move {
+                use tokio::time::{sleep, Duration};
+                loop {
+                    sleep(Duration::from_secs(5)).await;
+                    let snapshot = {
+                        let guard = cache_for_sink.read().await;
+                        guard.clone()
+                    };
+                    for (pair, price) in snapshot {
+                        let pair_str = format!("{}/{}", pair.base, pair.quote);
+                        let _ = (*pg_sink).execute(
+                            "INSERT INTO price_ticks (pair, price, ts) VALUES ($1, $2, now())",
+                            &[&pair_str as &(dyn ToSql + Sync), &price],
+                        ).await;
+                    }
+                }
+            });
+        }
+
+        // ---- External signal sources (Binance via CCXT-like REST) ----
+        {
+            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub};
+            let (sig_tx, sig_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f64)>();
+            // Spawn Binance BTCUSDT poller every 5 seconds
+            let binance_src = CcxtSource::new("BTCUSDT", 5, sig_tx.clone());
+            tokio::spawn(async move { let _ = binance_src.run().await; });
+
+            // Spawn Perplexity sentiment source every 60 seconds for BTC
+            let perp_src = PerplexitySource::new(&["BTC"], 60, sig_tx.clone());
+            tokio::spawn(async move { let _ = perp_src.run().await; });
+
+            #[cfg(feature = "db")]
+            let pg_for_hub = data_layer_opt.as_ref().map(|dl| dl.pg.clone());
+            #[cfg(not(feature = "db"))]
+            let pg_for_hub: Option<std::sync::Arc<tokio_postgres::Client>> = None;
+
+            let hub = SignalHub {
+                rx: sig_rx,
+                price_cache: price_cache.clone(),
+                #[cfg(feature = "db")]
+                pg: pg_for_hub,
+                #[cfg(feature = "db")]
+                ch: data_layer_opt.as_ref().map(|dl| dl.clickhouse.clone()),
+            };
+            tokio::spawn(hub.run());
+        }
+
         let scheduler_handle = {
             let tx = tx_clone;
             let cache_clone = price_cache.clone();
@@ -324,6 +416,16 @@ impl TradingEngine {
         for strat in &strategies_vec {
             perf_map.insert(strat.name().to_string(), PerformanceMonitor::new());
         }
+        #[cfg(feature = "sidecar")]
+        let sidecar_client_opt = if let Some(scfg) = &config.sidecar {
+            if scfg.enabled {
+                Some(crate::sidecar::SidecarClient::new(scfg.endpoint.clone()))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         TradingEngine {
             dex_clients: std::collections::HashMap::new(),
             strategies: strategies_vec,
@@ -355,8 +457,12 @@ impl TradingEngine {
             dashboard_handle: dashboard_handle_opt,
             dashboard_state: dashboard_state_opt,
             persistence: persistence.clone(),
+            #[cfg(feature = "db")]
+            data_layer: data_layer_opt,
             retry_tx,
             retry_rx: Some(retry_rx),
+            #[cfg(feature = "sidecar")]
+            sidecar_client: sidecar_client_opt,
             slippage_bps,
             max_fee_lamports,
             split_threshold_sol,
@@ -690,7 +796,7 @@ impl TradingEngine {
         let mut router = MarketRouter::new();
 
         // Prepare symbols for streams
-        let symbol_strs: Vec<String> = symbols.iter().cloned().collect();
+        let symbol_strs = symbols.to_vec();
 
         // Add Binance stream
         let binance_stream =
@@ -710,11 +816,12 @@ impl TradingEngine {
         let coinbase_stream =
             Box::new(crate::utils::coinbase_stream::CoinbaseStream::new(&symbol_strs));
         router.add_stream(coinbase_stream);
+
         let kraken_stream = Box::new(crate::utils::kraken_stream::KrakenStream::new());
         router.add_stream(kraken_stream);
         // SerumStream requires a market symbol, use the first symbol or fallback
         let serum_market = symbol_strs
-            .get(0)
+            .first()
             .cloned()
             .unwrap_or_else(|| "SOL/USDC".to_string());
         let serum_stream = Box::new(crate::utils::serum_stream::SerumStream::new(&serum_market));
@@ -723,7 +830,7 @@ impl TradingEngine {
         let triton_api_key =
             std::env::var("TRITON_API_KEY").unwrap_or_else(|_| "demo-key".to_string());
         let triton_market = symbol_strs
-            .get(0)
+            .first()
             .cloned()
             .unwrap_or_else(|| "SOL/USDC".to_string());
         let triton_stream = Box::new(crate::utils::triton_stream::TritonStream::new(
@@ -838,12 +945,13 @@ impl TradingEngine {
             },
             price: sig.price,
             size: sig.size,
+            confidence: sig.confidence,
             order_type: sig.order_type,
             limit_price: sig.limit_price,
             stop_price: sig.stop_price,
             stop_loss: None,
             take_profit: None,
-            timestamp: sig.timestamp as i64,
+            timestamp: sig.timestamp,
             metadata: std::collections::HashMap::new(),
         })
     }
@@ -905,7 +1013,56 @@ impl TradingEngine {
         Ok(())
     }
 
-    async fn handle_signals(&mut self, signals: Vec<Signal>) -> anyhow::Result<()> {
+    #[cfg_attr(not(feature = "sidecar"), allow(unused_mut))]
+    async fn handle_signals(&mut self, mut signals: Vec<Signal>) -> anyhow::Result<()> {
+        #[cfg(feature = "sidecar")]
+        if let Some(sc) = &self.sidecar_client {
+            if let Some(cfg) = &self.config.sidecar {
+                if cfg.enabled {
+                    let weight = cfg.weight.clamp(0.0, 1.0);
+                    // Down-weight local engine signals
+                    for sig in signals.iter_mut() {
+                        sig.confidence *= 1.0 - weight;
+                    }
+                    if let Ok(feat) = serde_json::to_value(&signals) {
+                        match sc.predict(feat).await {
+                            | Ok(resp) => {
+                                let sidecar_sigs: Vec<Signal> = if let Ok(vec) =
+                                    serde_json::from_value::<Vec<Signal>>(resp.clone())
+                                {
+                                    vec
+                                } else if let Some(arr) =
+                                    resp.get("signals").and_then(|v| v.as_array())
+                                {
+                                    serde_json::from_value::<Vec<Signal>>(serde_json::Value::Array(
+                                        arr.clone(),
+                                    ))
+                                    .unwrap_or_default()
+                                } else {
+                                    Vec::new()
+                                };
+                                if !sidecar_sigs.is_empty() {
+                                    log::info!(
+                                        "Blended {} sidecar signals (weight {:.2})",
+                                        sidecar_sigs.len(),
+                                        weight
+                                    );
+                                    let mut scaled = sidecar_sigs
+                                        .into_iter()
+                                        .map(|mut s| {
+                                            s.confidence *= weight;
+                                            s
+                                        })
+                                        .collect::<Vec<_>>();
+                                    signals.append(&mut scaled);
+                                }
+                            }
+                            | Err(e) => log::warn!("Sidecar predict error: {}", e),
+                        }
+                    }
+                }
+            }
+        }
         for sig in signals {
             // Risk checks
             if self.open_trades >= self.max_open_trades {
@@ -957,21 +1114,20 @@ impl TradingEngine {
                     let mut last_err: Option<anyhow::Error> = None;
                     for dex_name in preferred.iter() {
                         if let Some(dex) = self.dex_clients.get(*dex_name) {
-                            match dex
-                                .execute_trade(
-                                    &sig.pair.base,
-                                    &sig.pair.quote,
-                                    chunk,
-                                    matches!(sig.action, crate::utils::types::SignalAction::Buy),
-                                    self.slippage_bps,
-                                    self.max_fee_lamports,
-                                    sig.order_type,
-                                    sig.limit_price,
-                                    sig.stop_price,
-                                    None,
-                                    &wallet_ref,
-                                )
-                                .await
+                            match dex.execute_trade(
+                                &sig.pair.base,
+                                &sig.pair.quote,
+                                chunk,
+                                matches!(sig.action, crate::utils::types::SignalAction::Buy),
+                                self.slippage_bps,
+                                self.max_fee_lamports,
+                                sig.order_type,
+                                sig.limit_price,
+                                sig.stop_price,
+                                None,
+                                &wallet_ref,
+                            )
+                            .await
                             {
                                 | Ok(_) => {
                                     // Persist trade record (pnl unknown at entry)
@@ -1004,6 +1160,7 @@ impl TradingEngine {
                         }
                     }
                     if !executed {
+                        #[allow(clippy::collapsible_if)]
                         if let Some(err) = &last_err {
                             if sig.order_type == crate::utils::types::OrderType::Stop
                                 || sig.order_type == crate::utils::types::OrderType::StopLimit
@@ -1063,7 +1220,9 @@ impl TradingEngine {
                 // Append history
                 self.trade_history.push(TradeRecord {
                     id: None,
-                    timestamp: chrono::NaiveDateTime::from_timestamp(sig.timestamp, 0),
+                    timestamp: chrono::DateTime::<chrono::Utc>::from_timestamp(sig.timestamp, 0)
+                        .unwrap()
+                        .naive_utc(),
                     symbol: sig.pair.to_string(),
                     side: match sig.action {
                         | SignalAction::Buy => "buy".into(),
@@ -1131,7 +1290,7 @@ impl TradingEngine {
                     // Append history
                     self.trade_history.push(TradeRecord {
                             id: None,
-                            timestamp: chrono::NaiveDateTime::from_timestamp(sig.timestamp, 0),
+                            timestamp: chrono::DateTime::<chrono::Utc>::from_timestamp(sig.timestamp, 0).unwrap().naive_utc(),
                             symbol: sig.pair.to_string(),
                             side: match sig.action { SignalAction::Buy => "buy".into(), SignalAction::Sell => "sell".into(), _ => "other".into() },
                             qty: chunk,
@@ -1146,7 +1305,6 @@ impl TradingEngine {
     }
 
     /// Convert incoming MarketEvent to simple MarketData for strategy consumption
-
     fn convert_market_event(
         event: &crate::utils::market_stream::MarketEvent,
     ) -> Option<MarketData> {
@@ -1203,9 +1361,15 @@ impl TradingEngine {
     }
 }
 
-#[cfg(test)]
+impl Default for TradingEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 mod tests {
     use super::*;
+    use crate::config::Config;
 
     #[test]
     fn test_trading_engine_initialization() {
@@ -1213,9 +1377,9 @@ mod tests {
         // Add assertions
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_trading_engine_start() {
-        let engine = TradingEngine::new();
+        let engine = TradingEngine::with_config_async(Config::default(), false).await;
         assert!(engine.start().await.is_ok());
     }
 }
