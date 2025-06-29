@@ -339,11 +339,15 @@ impl TradingEngine {
 
         // ---- External signal sources (Binance via CCXT-like REST) ----
         {
-            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub};
+            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub, alpaca::AlpacaSource};
             let (sig_tx, sig_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f64)>();
             // Spawn Binance BTCUSDT poller every 5 seconds
             let binance_src = CcxtSource::new("BTCUSDT", 5, sig_tx.clone());
             tokio::spawn(async move { let _ = binance_src.run().await; });
+
+            // Spawn Alpaca price poller for AAPL every 10 seconds
+            let alpaca_src = AlpacaSource::new("AAPL", 10, sig_tx.clone());
+            tokio::spawn(async move { let _ = alpaca_src.run().await; });
 
             // Spawn Perplexity sentiment source every 60 seconds for BTC
             let perp_src = PerplexitySource::new(&["BTC"], 60, sig_tx.clone());

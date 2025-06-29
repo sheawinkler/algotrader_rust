@@ -3,6 +3,7 @@
 pub mod ccxt;
 pub mod hub;
 pub mod perplexity;
+pub mod alpaca;
 
 use async_trait::async_trait;
 
