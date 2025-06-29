@@ -52,7 +52,37 @@ impl DataLayer {
         // --- ClickHouse ----------------------------------------
         let clickhouse = ChPool::new(clickhouse_url);
 
-        Ok(Self { pg: pg_client, redis, clickhouse })
+        let dl = Self { pg: pg_client, redis, clickhouse };
+        // Ensure core schema exists
+        dl.ensure_schema().await.ok();
+        Ok(dl)
+    }
+
+    /// Create TimescaleDB hypertable and basic schema if they do not exist.
+    pub async fn ensure_schema(&self) -> Result<()> {
+        // price_ticks table
+        let q = r#"
+            CREATE TABLE IF NOT EXISTS price_ticks (
+                id BIGSERIAL PRIMARY KEY,
+                pair TEXT NOT NULL,
+                price DOUBLE PRECISION NOT NULL,
+                ts TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            SELECT create_hypertable('price_ticks', 'ts', if_not_exists => TRUE);
+        "#;
+        let _ = self.pg.batch_execute(q).await;
+        Ok(())
+    }
+
+    /// Append a single price tick to TimescaleDB.
+    pub async fn insert_price_tick(&self, pair: &str, price: f64) {
+        let _ = self
+            .pg
+            .execute(
+                "INSERT INTO price_ticks (pair, price, ts) VALUES ($1, $2, now())",
+                &[&pair, &price],
+            )
+            .await;
     }
 }
 

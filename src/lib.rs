@@ -249,6 +249,7 @@ impl TradingEngine {
             price_pairs.push(TradingPair::new("SOL", "USDC"));
         }
         let price_feed_handle = market_ws::spawn_price_feed(&price_pairs, price_cache.clone());
+
         let starting_cash = config.trading.starting_balance_usd;
         let wallet_instance = if !paper_trading {
             match config.load_keypair() {
@@ -307,6 +308,32 @@ impl TradingEngine {
 
         // spawn scheduler
         let tx_clone = retry_tx.clone();
+        // -------------------------------- Price cache → DB sink -------------------
+        #[cfg(feature = "db")]
+        if let Some(dl_ref) = data_layer_opt.as_ref() {
+            let pg_sink = dl_ref.pg.clone();
+            let cache_for_sink = price_cache.clone();
+            tokio::spawn(async move {
+                use tokio::time::{sleep, Duration};
+                loop {
+                    sleep(Duration::from_secs(5)).await;
+                    let snapshot = {
+                        let guard = cache_for_sink.read().await;
+                        guard.clone()
+                    };
+                    for (pair, price) in snapshot {
+                        let pair_str = format!("{}/{}", pair.base, pair.quote);
+                        let _ = pg_sink
+                            .execute(
+                                "INSERT INTO price_ticks (pair, price, ts) VALUES ($1, $2, now())",
+                                &[&pair_str, &price],
+                            )
+                            .await;
+                    }
+                }
+            });
+        }
+
         let scheduler_handle = {
             let tx = tx_clone;
             let cache_clone = price_cache.clone();
