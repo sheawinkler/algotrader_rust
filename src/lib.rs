@@ -339,7 +339,7 @@ impl TradingEngine {
 
         // ---- External signal sources (Binance via CCXT-like REST) ----
         {
-            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub, alpaca::AlpacaSource, armor::ArmorSource, financial::FinancialSource, photon::PhotonSource, solanasniffer::SolanaSnifferSource};
+            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub, alpaca::AlpacaSource, armor::ArmorSource, financial::FinancialSource, photon::PhotonSource, solanasniffer::SolanaSnifferSource, websentiment::WebSentimentSource};
             let (sig_tx, sig_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f64)>();
             // Spawn Binance BTCUSDT poller every 5 seconds
             let binance_src = CcxtSource::new("BTCUSDT", 5, sig_tx.clone());
@@ -368,6 +368,10 @@ impl TradingEngine {
             // Spawn SolanaSniffer rug/whale alert every 20 seconds for SOL
             let sniff_src = SolanaSnifferSource::new("SOL", 20, sig_tx.clone());
             tokio::spawn(async move { let _ = sniff_src.run().await; });
+
+            // Spawn WebSentiment crawler every 45 seconds for BTC
+            let web_sent_src = WebSentimentSource::new("BTC", 45, sig_tx.clone());
+            tokio::spawn(async move { let _ = web_sent_src.run().await; });
 
             #[cfg(feature = "db")]
             let pg_for_hub = data_layer_opt.as_ref().map(|dl| dl.pg.clone());

@@ -8,6 +8,7 @@ pub mod armor;
 pub mod financial;
 pub mod photon;
 pub mod solanasniffer;
+pub mod websentiment;
 
 use async_trait::async_trait;
 
