@@ -2,6 +2,7 @@
 
 pub mod ccxt;
 pub mod hub;
+pub mod perplexity;
 
 use async_trait::async_trait;
 

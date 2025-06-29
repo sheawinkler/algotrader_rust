@@ -339,11 +339,15 @@ impl TradingEngine {
 
         // ---- External signal sources (Binance via CCXT-like REST) ----
         {
-            use crate::signal::{ccxt::CcxtSource, hub::SignalHub};
+            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub};
             let (sig_tx, sig_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f64)>();
             // Spawn Binance BTCUSDT poller every 5 seconds
             let binance_src = CcxtSource::new("BTCUSDT", 5, sig_tx.clone());
             tokio::spawn(async move { let _ = binance_src.run().await; });
+
+            // Spawn Perplexity sentiment source every 60 seconds for BTC
+            let perp_src = PerplexitySource::new(&["BTC"], 60, sig_tx.clone());
+            tokio::spawn(async move { let _ = perp_src.run().await; });
 
             #[cfg(feature = "db")]
             let pg_for_hub = data_layer_opt.as_ref().map(|dl| dl.pg.clone());
