@@ -132,6 +132,9 @@ pub struct TradingEngine {
     dashboard_state: Option<crate::dashboard::SharedSnapshot>,
     /// Persistence backend (sqlite or null)
     pub persistence: std::sync::Arc<dyn Persistence + Send + Sync>,
+    /// Aggregated access to TimescaleDB / Redis / ClickHouse (only when compiled with `db` feature)
+    #[cfg(feature = "db")]
+    pub data_layer: Option<crate::data_layer::DataLayer>,
     retry_tx: tokio::sync::mpsc::UnboundedSender<crate::utils::types::PendingOrder>,
     retry_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::utils::types::PendingOrder>>,
     #[cfg(feature = "sidecar")]
@@ -286,6 +289,22 @@ impl TradingEngine {
                 (None, None)
             }
         };
+        // --- Optional data layer initialisation ---------------------------------
+        #[cfg(feature = "db")]
+        let data_layer_opt = {
+            use crate::data_layer::DataLayer;
+            let pg = std::env::var("PG_URL").unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".to_string());
+            let redis = std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
+            let ch = std::env::var("CH_URL").unwrap_or_else(|_| "tcp://127.0.0.1:9000".to_string());
+            match DataLayer::initialise(&pg, &redis, &ch).await {
+                Ok(dl) => Some(dl),
+                Err(e) => {
+                    log::error!("Failed to initialise data layer: {e}");
+                    None
+                }
+            }
+        };
+
         // spawn scheduler
         let tx_clone = retry_tx.clone();
         let scheduler_handle = {
@@ -380,6 +399,8 @@ impl TradingEngine {
             dashboard_handle: dashboard_handle_opt,
             dashboard_state: dashboard_state_opt,
             persistence: persistence.clone(),
+            #[cfg(feature = "db")]
+            data_layer: data_layer_opt,
             retry_tx,
             retry_rx: Some(retry_rx),
             #[cfg(feature = "sidecar")]
