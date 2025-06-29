@@ -4,6 +4,10 @@ pub mod ccxt;
 pub mod hub;
 pub mod perplexity;
 pub mod alpaca;
+pub mod armor;
+pub mod financial;
+pub mod photon;
+pub mod solanasniffer;
 
 use async_trait::async_trait;
 

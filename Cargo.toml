@@ -23,7 +23,7 @@ required-features = ["cli"]
 
 
 [features]
-default = []
+default = ["sidecar"]
 cli = ["structopt", "clap_complete", "clap_mangen"]
 full = ["cli"]
 ml = []

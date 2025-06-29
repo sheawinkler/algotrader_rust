@@ -339,7 +339,7 @@ impl TradingEngine {
 
         // ---- External signal sources (Binance via CCXT-like REST) ----
         {
-            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub, alpaca::AlpacaSource};
+            use crate::signal::{ccxt::CcxtSource, perplexity::PerplexitySource, hub::SignalHub, alpaca::AlpacaSource, armor::ArmorSource, financial::FinancialSource, photon::PhotonSource, solanasniffer::SolanaSnifferSource};
             let (sig_tx, sig_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f64)>();
             // Spawn Binance BTCUSDT poller every 5 seconds
             let binance_src = CcxtSource::new("BTCUSDT", 5, sig_tx.clone());
@@ -352,6 +352,22 @@ impl TradingEngine {
             // Spawn Perplexity sentiment source every 60 seconds for BTC
             let perp_src = PerplexitySource::new(&["BTC"], 60, sig_tx.clone());
             tokio::spawn(async move { let _ = perp_src.run().await; });
+
+            // Spawn Armor Crypto risk source every 30 seconds for BTC
+            let armor_src = ArmorSource::new("BTC", 30, sig_tx.clone());
+            tokio::spawn(async move { let _ = armor_src.run().await; });
+
+            // Spawn Financial Datasets macro indicator every 120 seconds for BTC
+            let fin_src = FinancialSource::new("BTC", 120, sig_tx.clone());
+            tokio::spawn(async move { let _ = fin_src.run().await; });
+
+            // Spawn Photon-Sol liquidity source every 15 seconds for SOL/USDC
+            let photon_src = PhotonSource::new("SOL/USDC", 15, sig_tx.clone());
+            tokio::spawn(async move { let _ = photon_src.run().await; });
+
+            // Spawn SolanaSniffer rug/whale alert every 20 seconds for SOL
+            let sniff_src = SolanaSnifferSource::new("SOL", 20, sig_tx.clone());
+            tokio::spawn(async move { let _ = sniff_src.run().await; });
 
             #[cfg(feature = "db")]
             let pg_for_hub = data_layer_opt.as_ref().map(|dl| dl.pg.clone());
