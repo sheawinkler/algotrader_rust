@@ -25,6 +25,7 @@ pub mod sidecar;
 pub mod strategies; // unified rich strategy module
 pub mod trading;
 pub mod utils;
+pub mod signal;
 
 pub mod dashboard;
 pub mod market_data;
@@ -50,6 +51,8 @@ use crate::risk::{RiskAction, RiskRule};
 use crate::strategies::TradingStrategy;
 use crate::trading::{Signal as StratSignal, SignalType};
 use crate::utils::types::PendingOrder;
+use tokio_postgres::types::ToSql;
+use crate::signal::SignalSource;
 use crate::utils::types::{MarketData, Order, OrderSide, Signal, SignalAction, TradingPair};
 use chrono::{NaiveDateTime, Utc};
 use solana_sdk::signature::Keypair;
@@ -250,6 +253,8 @@ impl TradingEngine {
         }
         let price_feed_handle = market_ws::spawn_price_feed(&price_pairs, price_cache.clone());
 
+
+
         let starting_cash = config.trading.starting_balance_usd;
         let wallet_instance = if !paper_trading {
             match config.load_keypair() {
@@ -323,15 +328,35 @@ impl TradingEngine {
                     };
                     for (pair, price) in snapshot {
                         let pair_str = format!("{}/{}", pair.base, pair.quote);
-                        let _ = pg_sink
-                            .execute(
-                                "INSERT INTO price_ticks (pair, price, ts) VALUES ($1, $2, now())",
-                                &[&pair_str, &price],
-                            )
-                            .await;
+                        let _ = (*pg_sink).execute(
+                            "INSERT INTO price_ticks (pair, price, ts) VALUES ($1, $2, now())",
+                            &[&pair_str as &(dyn ToSql + Sync), &price],
+                        ).await;
                     }
                 }
             });
+        }
+
+        // ---- External signal sources (Binance via CCXT-like REST) ----
+        {
+            use crate::signal::{ccxt::CcxtSource, hub::SignalHub};
+            let (sig_tx, sig_rx) = tokio::sync::mpsc::unbounded_channel::<(String, f64)>();
+            // Spawn Binance BTCUSDT poller every 5 seconds
+            let binance_src = CcxtSource::new("BTCUSDT", 5, sig_tx.clone());
+            tokio::spawn(async move { let _ = binance_src.run().await; });
+
+            #[cfg(feature = "db")]
+            let pg_for_hub = data_layer_opt.as_ref().map(|dl| dl.pg.clone());
+            #[cfg(not(feature = "db"))]
+            let pg_for_hub: Option<std::sync::Arc<tokio_postgres::Client>> = None;
+
+            let hub = SignalHub {
+                rx: sig_rx,
+                price_cache: price_cache.clone(),
+                #[cfg(feature = "db")]
+                pg: pg_for_hub,
+            };
+            tokio::spawn(hub.run());
         }
 
         let scheduler_handle = {
@@ -1083,21 +1108,20 @@ impl TradingEngine {
                     let mut last_err: Option<anyhow::Error> = None;
                     for dex_name in preferred.iter() {
                         if let Some(dex) = self.dex_clients.get(*dex_name) {
-                            match dex
-                                .execute_trade(
-                                    &sig.pair.base,
-                                    &sig.pair.quote,
-                                    chunk,
-                                    matches!(sig.action, crate::utils::types::SignalAction::Buy),
-                                    self.slippage_bps,
-                                    self.max_fee_lamports,
-                                    sig.order_type,
-                                    sig.limit_price,
-                                    sig.stop_price,
-                                    None,
-                                    &wallet_ref,
-                                )
-                                .await
+                            match dex.execute_trade(
+                                &sig.pair.base,
+                                &sig.pair.quote,
+                                chunk,
+                                matches!(sig.action, crate::utils::types::SignalAction::Buy),
+                                self.slippage_bps,
+                                self.max_fee_lamports,
+                                sig.order_type,
+                                sig.limit_price,
+                                sig.stop_price,
+                                None,
+                                &wallet_ref,
+                            )
+                            .await
                             {
                                 | Ok(_) => {
                                     // Persist trade record (pnl unknown at entry)

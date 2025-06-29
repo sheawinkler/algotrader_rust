@@ -1,6 +1,7 @@
 //! Signal ingestion sources – CCXT, sentiment feeds, etc.
 
 pub mod ccxt;
+pub mod hub;
 
 use async_trait::async_trait;
 

@@ -21,7 +21,7 @@ use tokio_postgres::NoTls;
 /// Aggregated handle exposing typed clients for all data stores.
 pub struct DataLayer {
     /// TimescaleDB client (pgvector enabled)
-    pub pg: tokio_postgres::Client,
+    pub pg: std::sync::Arc<tokio_postgres::Client>,
     /// Redis async connection
     pub redis: RedisConn,
     /// ClickHouse async pool
@@ -32,7 +32,7 @@ impl DataLayer {
     /// Build a [`DataLayer`] instance from connection strings.
     pub async fn initialise(pg_url: &str, redis_url: &str, clickhouse_url: &str) -> Result<Self> {
         // --- Postgres / TimescaleDB -----------------------------
-        let (pg_client, pg_connection) = tokio_postgres::connect(pg_url, NoTls)
+        let (pg_client_raw, pg_connection) = tokio_postgres::connect(pg_url, NoTls)
             .await
             .context("failed to connect to postgres")?;
         // Spawn the connection driver so it runs independently
@@ -52,7 +52,7 @@ impl DataLayer {
         // --- ClickHouse ----------------------------------------
         let clickhouse = ChPool::new(clickhouse_url);
 
-        let dl = Self { pg: pg_client, redis, clickhouse };
+        let dl = Self { pg: std::sync::Arc::new(pg_client_raw), redis, clickhouse };
         // Ensure core schema exists
         dl.ensure_schema().await.ok();
         Ok(dl)
@@ -70,14 +70,13 @@ impl DataLayer {
             );
             SELECT create_hypertable('price_ticks', 'ts', if_not_exists => TRUE);
         "#;
-        let _ = self.pg.batch_execute(q).await;
+        let _ = (*self.pg).batch_execute(q).await;
         Ok(())
     }
 
     /// Append a single price tick to TimescaleDB.
     pub async fn insert_price_tick(&self, pair: &str, price: f64) {
-        let _ = self
-            .pg
+        let _ = (*self.pg)
             .execute(
                 "INSERT INTO price_ticks (pair, price, ts) VALUES ($1, $2, now())",
                 &[&pair, &price],
