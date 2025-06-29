@@ -359,6 +359,8 @@ impl TradingEngine {
                 price_cache: price_cache.clone(),
                 #[cfg(feature = "db")]
                 pg: pg_for_hub,
+                #[cfg(feature = "db")]
+                ch: data_layer_opt.as_ref().map(|dl| dl.clickhouse.clone()),
             };
             tokio::spawn(hub.run());
         }
